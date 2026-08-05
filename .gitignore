@@ -14,3 +14,6 @@ tsconfig.tsbuildinfo
 
 # scratch / design brief (kept locally; full design lives in docs/ARCHITECTURE.md)
 p.t
+
+# code-signing secrets — never commit
+.signing-identity

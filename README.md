@@ -133,6 +133,34 @@ See the full phased plan, data model, rendering architecture, AI architecture, p
 
 ---
 
+## Signing & notarization (macOS distribution)
+
+Release builds are currently **un-notarized**, so a downloaded `Anvaya.app` opens
+after a one-time step:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Anvaya.app   # or right-click → Open
+```
+
+The infrastructure for a proper, warning-free release is in place for when an
+**Apple Developer ID** is available — see [`scripts/sign-and-notarize.sh`](scripts/sign-and-notarize.sh)
+and [`scripts/entitlements.plist`](scripts/entitlements.plist):
+
+```bash
+# one-time: store notary credentials in the keychain
+xcrun notarytool store-credentials anvaya-notary \
+    --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-pw"
+
+# build → sign (hardened runtime) → notarize → staple → release-ready zip in dist-app/
+make notarize SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+              NOTARY_PROFILE=anvaya-notary
+```
+
+`make sign` signs without notarizing. `SIGN_IDENTITY` can also be persisted in a
+(git-ignored) `.signing-identity` file.
+
+---
+
 ## License
 
 Anvaya is dual-licensed under either of

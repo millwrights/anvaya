@@ -19,8 +19,14 @@ DIST_DIR    := dist-app
 INSTALL_DIR := /Applications
 INSTALLED   := $(INSTALL_DIR)/$(APP).app
 
+# Code-signing identity for a signed/notarized release, e.g.
+#   "Developer ID Application: Your Name (TEAMID)".
+# Set it inline (make notarize SIGN_IDENTITY="Developer ID ...") or persist it:
+#   echo "Developer ID Application: ... (TEAMID)" > .signing-identity   (gitignored)
+SIGN_IDENTITY ?= $(shell cat .signing-identity 2>/dev/null || echo -)
+
 .DEFAULT_GOAL := help
-.PHONY: help deps dev web build typecheck app app-debug run install uninstall dist clean distclean doctor
+.PHONY: help deps dev web build typecheck app app-debug run install uninstall dist sign notarize clean distclean doctor
 
 help:
 	@echo "$(APP) $(VERSION) — make targets:"
@@ -33,6 +39,8 @@ help:
 	@echo "  make install    Release-build and install into $(INSTALL_DIR)"
 	@echo "  make uninstall  Remove $(INSTALLED)"
 	@echo "  make dist       Copy the release .dmg into $(DIST_DIR)/"
+	@echo "  make sign       Code-sign $(APP).app (needs SIGN_IDENTITY)"
+	@echo "  make notarize   Sign + notarize + staple for distribution (Apple Developer ID)"
 	@echo "  make typecheck  TypeScript check only"
 	@echo "  make doctor     Show tool versions / environment"
 	@echo "  make clean      Remove build artifacts (dist, bundles, $(DIST_DIR))"
@@ -114,6 +122,23 @@ dist:
 		&& echo "✓ Copied .dmg to $(DIST_DIR)/" \
 		|| echo "⚠ no .dmg found in $(BUNDLE_REL)/dmg/"
 	@ls -lh $(DIST_DIR)/*.dmg 2>/dev/null || true
+
+# ── code signing / notarization (Apple Developer ID) ─────────────────────────
+# Just sign the app bundle with the hardened runtime (no notarization).
+sign: app
+	codesign --force --deep --options runtime \
+		--entitlements scripts/entitlements.plist \
+		--identifier app.anvaya.desktop \
+		--sign "$(SIGN_IDENTITY)" "$(APP_REL)"
+	@codesign --verify --verbose "$(APP_REL)"
+
+# Full distribution flow: build → sign (hardened runtime) → notarize → staple.
+# Needs a "Developer ID Application" cert + notary credentials. The stapled,
+# release-ready zip lands in $(DIST_DIR)/. See scripts/sign-and-notarize.sh.
+#   make notarize SIGN_IDENTITY="Developer ID Application: ... (TEAMID)" \
+#                 NOTARY_PROFILE=anvaya-notary
+notarize:
+	@SIGN_IDENTITY="$(SIGN_IDENTITY)" scripts/sign-and-notarize.sh
 
 doctor:
 	@echo "node:  $$(node -v 2>/dev/null || echo missing)"
