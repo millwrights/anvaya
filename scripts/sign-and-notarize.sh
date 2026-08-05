@@ -17,13 +17,13 @@
 #   APP_PASSWORD    an app-specific password (appleid.apple.com)
 #
 # One-time notarytool profile setup (so credentials aren't passed each run):
-#   xcrun notarytool store-credentials anvaya-notary \
+#   xcrun notarytool store-credentials millwrights-notary \
 #       --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-pw"
-#   export NOTARY_PROFILE=anvaya-notary
+#   export NOTARY_PROFILE=millwrights-notary
 #
 # Usage:
 #   SIGN_IDENTITY="Developer ID Application: ... (TEAMID)" \
-#   NOTARY_PROFILE=anvaya-notary \
+#   NOTARY_PROFILE=millwrights-notary \
 #   scripts/sign-and-notarize.sh
 
 set -euo pipefail

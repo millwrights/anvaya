@@ -136,7 +136,7 @@ sign: app
 # Needs a "Developer ID Application" cert + notary credentials. The stapled,
 # release-ready zip lands in $(DIST_DIR)/. See scripts/sign-and-notarize.sh.
 #   make notarize SIGN_IDENTITY="Developer ID Application: ... (TEAMID)" \
-#                 NOTARY_PROFILE=anvaya-notary
+#                 NOTARY_PROFILE=millwrights-notary
 notarize:
 	@SIGN_IDENTITY="$(SIGN_IDENTITY)" scripts/sign-and-notarize.sh
 
