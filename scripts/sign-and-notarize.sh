@@ -42,6 +42,32 @@ if [[ -z "${SIGN_IDENTITY:-}" || "${SIGN_IDENTITY}" == "-" ]]; then
   exit 1
 fi
 
+# Notarization can ONLY succeed with a real "Developer ID Application" cert
+# (a paid Apple Developer account). Fail fast — before the ~30s build — if the
+# identity is self-signed, rather than getting rejected by Apple at the end.
+if [[ "$SIGN_IDENTITY" != "Developer ID Application:"* ]]; then
+  cat >&2 <<MSG
+error: notarization needs a real "Developer ID Application" certificate, but
+       SIGN_IDENTITY is "$SIGN_IDENTITY" — a self-signed / non-Developer-ID cert.
+
+Apple's notary service only accepts apps signed with a Developer ID, which
+requires enrolling in the Apple Developer Program (\$99/yr). No Developer ID
+exists yet for this org (reyank/captr are in the same state).
+
+  • To just build + sign locally (no notarization):  make sign
+  • Distributing now? Ship the un-notarized build; users open it once with:
+        xattr -dr com.apple.quarantine /Applications/Anvaya.app
+
+Once the org has a Developer ID:
+  1. Install the "Developer ID Application" cert in your login keychain.
+  2. echo "Developer ID Application: Millwrights (TEAMID)" > .signing-identity
+  3. xcrun notarytool store-credentials millwrights-notary \\
+         --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-pw"
+  4. make notarize
+MSG
+  exit 1
+fi
+
 echo "==> Building release app bundle (app-only; skips the flaky .dmg step)"
 npx tauri build --bundles app
 
@@ -60,12 +86,24 @@ rm -f "$ZIP"
 echo "==> Submitting to Apple notary service (this waits for the result)"
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
   xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
-else
-  : "${APPLE_ID:?set APPLE_ID or NOTARY_PROFILE}"
-  : "${TEAM_ID:?set TEAM_ID or NOTARY_PROFILE}"
-  : "${APP_PASSWORD:?set APP_PASSWORD or NOTARY_PROFILE}"
+elif [[ -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ]]; then
   xcrun notarytool submit "$ZIP" \
     --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" --wait
+else
+  cat >&2 <<MSG
+error: no Apple notary credentials — cannot submit for notarization.
+
+The app is built and signed at:
+  $APP
+…but it is NOT notarized. Set up credentials one time, then re-run 'make notarize':
+
+  xcrun notarytool store-credentials millwrights-notary \\
+      --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-pw"
+  export NOTARY_PROFILE=millwrights-notary      # (or persist in your shell profile)
+
+Or pass them inline: APPLE_ID=… TEAM_ID=… APP_PASSWORD=… make notarize
+MSG
+  exit 1
 fi
 
 echo "==> Stapling the notarization ticket onto the app"
