@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-app/
+dist-ssr/
+*.local
+.DS_Store
+.anvaya/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/app-icon.png
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
+# scratch / design brief (kept locally; full design lives in docs/ARCHITECTURE.md)
+p.t

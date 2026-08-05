@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2233"/>
+      <stop offset="1" stop-color="#0f1115"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4c8dff"/>
+      <stop offset="1" stop-color="#7aa6ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <!-- connection motif: one root branching to three, i.e. anvaya = connection -->
+  <g stroke="url(#edge)" stroke-width="26" fill="none" stroke-linecap="round" opacity="0.95">
+    <path d="M320 512 C 440 512, 460 300, 620 300"/>
+    <path d="M320 512 C 460 512, 480 512, 620 512"/>
+    <path d="M320 512 C 440 512, 460 724, 620 724"/>
+  </g>
+  <circle cx="320" cy="512" r="72" fill="#4c8dff"/>
+  <circle cx="672" cy="300" r="52" fill="#e8eaed"/>
+  <circle cx="672" cy="512" r="52" fill="#e8eaed"/>
+  <circle cx="672" cy="724" r="52" fill="#e8eaed"/>
+</svg>
