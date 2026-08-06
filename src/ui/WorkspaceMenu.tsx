@@ -4,6 +4,7 @@ import {
   activeWorkspace,
   onWorkspaceChange,
   recentWorkspaces,
+  reloadFromDisk,
   switchWorkspace,
 } from "@/workspace/backend";
 import { isTauri, pickWorkspaceFolder } from "@/workspace/tauri";
@@ -15,6 +16,7 @@ export function WorkspaceMenu() {
   const [open, setOpen] = useState(false);
   const [, bump] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [busyText, setBusyText] = useState("Switching…");
 
   useEffect(() => onWorkspaceChange(() => bump((n) => n + 1)), []);
 
@@ -28,9 +30,23 @@ export function WorkspaceMenu() {
   };
 
   const go = async (root: string) => {
+    setBusyText("Switching…");
     setBusy(true);
     try {
       await switchWorkspace(root);
+      afterSwitch();
+    } finally {
+      setBusy(false);
+      setOpen(false);
+    }
+  };
+
+  // Re-read the workspace from disk — picks up changes pulled in via git.
+  const reload = async () => {
+    setBusyText("Reloading…");
+    setBusy(true);
+    try {
+      await reloadFromDisk();
       afterSwitch();
     } finally {
       setBusy(false);
@@ -48,7 +64,7 @@ export function WorkspaceMenu() {
     <div className="ws">
       <button className="ws-chip" onClick={() => setOpen((o) => !o)} disabled={busy}>
         <span className="dot" />
-        {busy ? "Switching…" : (info?.label ?? "Workspace")}
+        {busy ? busyText : (info?.label ?? "Workspace")}
         <span className="ws-caret">▴</span>
       </button>
 
@@ -60,6 +76,14 @@ export function WorkspaceMenu() {
             <div className="ws-path" title={info?.path ?? ""}>
               {info?.path ?? "Browser storage (IndexedDB)"}
             </div>
+
+            <button
+              className="ws-item"
+              onClick={reload}
+              title="Re-read this workspace's files (e.g. after a git pull)"
+            >
+              ↻ Reload from disk
+            </button>
 
             {isTauri ? (
               <>

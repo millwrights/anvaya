@@ -1,7 +1,7 @@
 import type { CanvasEngine } from "@/canvas/CanvasEngine";
 import { commands, doc } from "./session";
 import { downloadDocument, parseDocument } from "@/workspace/serialize";
-import { createDiagram, switchWorkspace } from "@/workspace/backend";
+import { createDiagram, reloadFromDisk, switchWorkspace } from "@/workspace/backend";
 import { isTauri, pickWorkspaceFolder } from "@/workspace/tauri";
 import { TEMPLATES } from "./templates";
 
@@ -147,6 +147,16 @@ export function buildCommands(): AppCommand[] {
     { id: "view.zoomOut", title: "Zoom out", run: (e) => e.zoomBy(1 / 1.2) },
     { id: "edit.undo", title: "Undo", hint: "⌘Z", run: () => commands.undo() },
     { id: "edit.redo", title: "Redo", hint: "⇧⌘Z", run: () => commands.redo() },
+    {
+      id: "workspace.reload",
+      title: "Reload from disk",
+      hint: "pick up git pulls",
+      run: async (e) => {
+        await reloadFromDisk();
+        e.setSelection([]);
+        e.zoomToFit();
+      },
+    },
     {
       id: "file.export",
       title: "Export diagram (.anvaya)",

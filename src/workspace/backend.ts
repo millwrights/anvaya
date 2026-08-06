@@ -175,6 +175,28 @@ class Workspace {
     notify();
   }
 
+  /**
+   * Re-read the workspace from disk, DISCARDING in-memory state — this is how you
+   * pick up external changes (e.g. after a `git pull`). It deliberately does NOT
+   * flush first, so a stale in-memory copy can't clobber the fresh files. Also
+   * refreshes the diagram list, so newly pulled diagrams appear.
+   */
+  async reloadCurrent() {
+    this.stopAutosave();
+    const files = await this.storage.list();
+    // Keep the current diagram if it still exists on disk; otherwise the first.
+    const name = this.current && files.includes(this.current) ? this.current : files[0];
+    if (name) {
+      await this.load(name);
+    } else {
+      this.doc.loadJSON(emptyDocument("Untitled"));
+      this.current = "untitled" + EXT;
+      await this.flushNow();
+    }
+    this.startAutosave();
+    notify();
+  }
+
   async createDiagram(title: string): Promise<string> {
     await this.flushNow();
     this.stopAutosave();
@@ -277,6 +299,10 @@ export function listDiagrams(): Promise<DiagramMeta[]> {
 }
 export function openDiagram(name: string): Promise<void> {
   return active ? active.openDiagram(name) : Promise.resolve();
+}
+/** Re-read the current workspace from disk (e.g. to pick up a `git pull`). */
+export function reloadFromDisk(): Promise<void> {
+  return active ? active.reloadCurrent() : Promise.resolve();
 }
 export async function createDiagram(title: string): Promise<void> {
   await active?.createDiagram(title);
