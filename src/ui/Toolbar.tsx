@@ -44,8 +44,8 @@ export function Toolbar() {
   }, [engine]);
 
   return (
-    <div className="toolbar">
-      <span className="brand">
+    <div className="toolbar" data-tauri-drag-region>
+      <span className="brand" data-tauri-drag-region>
         Anvaya{" "}
         {renaming ? (
           <input
@@ -97,7 +97,7 @@ export function Toolbar() {
 
       <InsertMenu />
 
-      <span className="spacer" />
+      <span className="spacer" data-tauri-drag-region />
 
       <LiveButton />
       <ThemeMenu />
