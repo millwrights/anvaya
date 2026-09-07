@@ -8,6 +8,32 @@ interface Props {
   registerOpen: (fn: (id: string) => void) => void;
 }
 
+/**
+ * Convert a contentEditable's DOM to plain text with exact line breaks — a <br>
+ * is one newline, each block (<div>/<p>) starts a new line, and text nodes keep
+ * their own "\n". This matches what's rendered, unlike innerText (over-counts a
+ * leading bare line) or textContent (drops <br>/<div> newlines entirely).
+ */
+function domToText(root: HTMLElement): string {
+  let out = "";
+  const walk = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out += child.textContent ?? "";
+      } else if (child.nodeName === "BR") {
+        out += "\n";
+      } else if (child.nodeName === "DIV" || child.nodeName === "P") {
+        if (out !== "" && !out.endsWith("\n")) out += "\n";
+        walk(child);
+      } else {
+        walk(child);
+      }
+    });
+  };
+  walk(root);
+  return out;
+}
+
 // In-place text editing that matches the node exactly: a transparent, centered
 // contentEditable sitting over the node, while the engine hides the node's baked
 // label. The shape/fill stay visible underneath — so editing a yellow sticky
@@ -57,7 +83,7 @@ export function EditorOverlay({ getEngine, registerOpen }: Props) {
     setEditingId(null);
   };
   const commit = () => {
-    if (ref.current) commands.setText(editingId, ref.current.textContent ?? "");
+    if (ref.current) commands.setText(editingId, domToText(ref.current).replace(/\n+$/, ""));
     close();
   };
 
@@ -87,13 +113,22 @@ export function EditorOverlay({ getEngine, registerOpen }: Props) {
           textAlign: s.align ?? "center",
         }}
         onBlur={commit}
+        onPaste={(e) => {
+          // Paste as plain text (no HTML), so foreign formatting doesn't come in.
+          e.preventDefault();
+          document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+        }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          // Mind-map topics: Enter commits so you can add the next topic fast.
+          // Every other shape is free-form text: Enter inserts a newline
+          // (finish by clicking away or pressing Escape). Shift+Enter always
+          // inserts a newline.
+          if (e.key === "Enter" && !e.shiftKey && node.shape === "topic") {
             e.preventDefault();
             commit();
           } else if (e.key === "Escape") {
             e.preventDefault();
-            close();
+            commit();
           }
           e.stopPropagation(); // don't let global shortcuts fire while typing
         }}
