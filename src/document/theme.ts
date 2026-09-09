@@ -54,7 +54,7 @@ function makeShapes(p: ShapePalette): Shapes {
     ellipse: { w: 140, h: 80, style: { fill: p.ellipseFill } },
     diamond: { w: 150, h: 90, style: { fill: p.diamondFill } },
     note: { w: 180, h: 100, style: { fill: p.noteFill } },
-    sticky: { w: 160, h: 130, style: { fill: p.stickyFill, textColor: p.stickyText } },
+    sticky: { w: 168, h: 168, style: { fill: p.stickyFill, textColor: p.stickyText, fontSize: 17 } },
     frame: { w: 420, h: 300, style: { fill: p.frameFill, stroke: p.frameStroke, textColor: p.frameText, strokeWidth: 1 } },
     image: { w: 220, h: 160, style: { fill: "#00000000", stroke: p.imageStroke, strokeWidth: 1 } },
     text: { w: 160, h: 40, style: { fill: "#00000000", stroke: "#00000000" } },
@@ -86,11 +86,11 @@ const DARK: Preset = {
   },
   palette: {
     node: { fill: "#191b21", stroke: "#2d303a", textColor: "#f4f5f7", fontSize: 14.5, strokeWidth: 0 },
-    topicFill: "#20304d", topicStroke: "#33496f",
-    ellipseFill: "#173229", ellipseStroke: "#2c5745",
-    diamondFill: "#3a2c16", diamondStroke: "#6a5026",
-    noteFill: "#3b371a", noteStroke: "#665e2c",
-    stickyFill: "#f4d35e", stickyStroke: "#d9b93f", stickyText: "#1a1a1a",
+    topicFill: "#2b6cff", topicStroke: "#1e50c8",
+    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
+    diamondFill: "#f5920b", diamondStroke: "#c9740a",
+    noteFill: "#f5c400", noteStroke: "#cfa300",
+    stickyFill: "#ffd60a", stickyStroke: "#d9b400", stickyText: "#1a1a1a",
     frameFill: "#101015", frameStroke: "#2a2a33", frameText: "#8a90a0",
     imageStroke: "#2d303a", drawStroke: "#f4f5f7",
   },
@@ -123,11 +123,11 @@ const MIDNIGHT: Preset = {
   },
   palette: {
     node: { fill: "#1c2230", stroke: "#33405c", textColor: "#e8eaed", fontSize: 15, strokeWidth: 0 },
-    topicFill: "#20304d", topicStroke: "#3a5285",
-    ellipseFill: "#1d2a26", ellipseStroke: "#356b56",
-    diamondFill: "#30261d", diamondStroke: "#7a5a34",
-    noteFill: "#2b2718", noteStroke: "#6b5f30",
-    stickyFill: "#f4d35e", stickyStroke: "#e0be48", stickyText: "#20242c",
+    topicFill: "#2b6cff", topicStroke: "#1e50c8",
+    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
+    diamondFill: "#f5920b", diamondStroke: "#c9740a",
+    noteFill: "#f5c400", noteStroke: "#cfa300",
+    stickyFill: "#ffd60a", stickyStroke: "#d9b400", stickyText: "#20242c",
     frameFill: "#141a24", frameStroke: "#2c3648", frameText: "#8b93a3",
     imageStroke: "#33405c", drawStroke: "#e8eaed",
   },
@@ -160,11 +160,11 @@ const LIGHT: Preset = {
   },
   palette: {
     node: { fill: "#ffffff", stroke: "#dfe3e9", textColor: "#1a1d23", fontSize: 14.5, strokeWidth: 0 },
-    topicFill: "#e6efff", topicStroke: "#b3cbf5",
-    ellipseFill: "#e2f5ea", ellipseStroke: "#9cd3b3",
-    diamondFill: "#fdf1d3", diamondStroke: "#eccf87",
-    noteFill: "#fdf6d6", noteStroke: "#e6d68a",
-    stickyFill: "#ffe082", stickyStroke: "#e6c34e", stickyText: "#20242c",
+    topicFill: "#2b6cff", topicStroke: "#1e50c8",
+    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
+    diamondFill: "#f5920b", diamondStroke: "#c9740a",
+    noteFill: "#f5c400", noteStroke: "#cfa300",
+    stickyFill: "#ffd60a", stickyStroke: "#e6c000", stickyText: "#20242c",
     frameFill: "#eef1f5", frameStroke: "#dbe0e7", frameText: "#7c8493",
     imageStroke: "#dfe3e9", drawStroke: "#1a1d23",
   },
@@ -238,6 +238,41 @@ export function initTheme() {
 
 export function resolveStyle(shape: NodeShape, override: Partial<NodeStyle>): NodeStyle {
   return { ...defaultNodeStyle, ...shapeDefaults[shape].style, ...override };
+}
+
+// ── color contrast ────────────────────────────────────────────────────────────
+// So vivid fills stay legible: pick black-or-white text when the requested text
+// color would be unreadable on the fill (and leave good-contrast picks alone).
+function alphaOf(hex: string): number {
+  const h = hex.replace("#", "");
+  return h.length >= 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+}
+/** WCAG relative luminance of an #rgb/#rrggbb(aa) color (alpha ignored). */
+function luminance(hex: string): number {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length < 6) return 1;
+  const chan = (i: number) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * chan(0) + 0.7152 * chan(2) + 0.0722 * chan(4);
+}
+function contrast(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+/**
+ * The text color to actually paint over `fill`. Keeps `preferred` when it reads
+ * well (or when the fill is transparent — text then sits on the canvas), and
+ * otherwise flips to near-black/near-white so vivid fills stay readable.
+ */
+export function readableText(preferred: string, fill?: string): string {
+  if (!fill || alphaOf(fill) < 0.15) return preferred;
+  if (contrast(preferred, fill) >= 3.2) return preferred;
+  // Flip to whichever of near-black / near-white reads best on this fill.
+  return contrast("#15171c", fill) >= contrast("#f6f7f9", fill) ? "#15171c" : "#f6f7f9";
 }
 
 // ── fonts ────────────────────────────────────────────────────────────────────

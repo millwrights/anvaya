@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CanvasEngine } from "@/canvas/CanvasEngine";
 import { commands, doc } from "@/app/session";
-import { fontStack, resolveStyle } from "@/document/theme";
+import { fontStack, readableText, resolveStyle } from "@/document/theme";
 
 interface Props {
   getEngine: () => CanvasEngine | null;
@@ -102,8 +102,8 @@ export function EditorOverlay({ getEngine, registerOpen }: Props) {
         spellCheck={false}
         style={{
           fontSize: s.fontSize * engine.camera.zoom,
-          color: s.textColor,
-          caretColor: s.textColor,
+          color: readableText(s.textColor, s.fill),
+          caretColor: readableText(s.textColor, s.fill),
           fontFamily: fontStack(s.fontFamily),
           fontWeight: s.bold ? 700 : 500,
           fontStyle: s.italic ? "italic" : "normal",

@@ -13,23 +13,25 @@ const SHAPES: { key: NodeShape; label: string }[] = [
 ];
 
 // Distinct, saturated fills that read clearly in both dark and light themes.
+// Vivid, saturated palettes — full-strength color, not washed-out pastels. Text
+// on fills auto-contrasts (see readableText), so bright fills stay legible.
 const FILLS = [
-  "#2a2e38", "#4a90d9", "#4caf72", "#e0c04a",
-  "#e08a3c", "#e0655f", "#a878e0", "#5a6070",
+  "#3a4150", "#2b6cff", "#16a34a", "#f5c400",
+  "#f5920b", "#f0392b", "#8b45ff", "#ec3a86",
 ];
-const STICKY_COLORS = ["#f4d35e", "#f6bd60", "#f28482", "#84a59d", "#8ecae6", "#cdb4db"];
-const BORDER_COLORS = ["#5b8cff", "#3ecf8e", "#e0c04a", "#e08a3c", "#e0655f", "#a878e0", "#9298a5"];
+const STICKY_COLORS = ["#ffd60a", "#ff9f0a", "#ff453a", "#32d74b", "#0a84ff", "#bf5af2", "#ff375f"];
+const BORDER_COLORS = ["#2b6cff", "#16a34a", "#f5c400", "#f5920b", "#f0392b", "#8b45ff", "#ec3a86", "#aeb4bf"];
 const BORDER_WIDTHS = [
   { w: 1, l: "Thin" },
   { w: 2, l: "Med" },
   { w: 3.5, l: "Thick" },
 ];
 const EDGE_COLORS = [
-  "#aab0c0", "#ffffff", "#111318", "#5b8cff", "#3ecf8e",
-  "#e0c04a", "#e08a3c", "#e0655f", "#a878e0",
+  "#e8ebf0", "#111318", "#2b6cff", "#16a34a", "#f5c400",
+  "#f5920b", "#f0392b", "#8b45ff", "#ec3a86",
 ];
 const WIDTH_LABELS = ["S", "M", "L"];
-const TEXT_COLORS = ["#f4f5f7", "#111318", "#aab0c0", "#5b8cff", "#3ecf8e", "#e0655f", "#e0c04a"];
+const TEXT_COLORS = ["#f6f7f9", "#111318", "#2b6cff", "#16a34a", "#f0392b", "#f5c400", "#8b45ff"];
 const ARROW_HEADS: { k: NonNullable<SceneEdge["arrowHead"]>; g: string; title: string }[] = [
   { k: "triangle", g: "▶", title: "Filled triangle" },
   { k: "open", g: "❯", title: "Open / sharp" },
