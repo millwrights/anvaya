@@ -22,6 +22,7 @@ import { Inspector } from "./Inspector";
 import { Minimap } from "./Minimap";
 import { CommandPalette } from "./CommandPalette";
 import { StatusBar } from "./StatusBar";
+import { AiPanel } from "./AiPanel";
 
 function isTyping(): boolean {
   const el = document.activeElement;
@@ -189,6 +190,7 @@ export function App() {
       <Minimap />
       <StatusBar />
       <CommandPalette />
+      <AiPanel />
     </div>
   );
 }

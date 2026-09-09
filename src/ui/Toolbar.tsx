@@ -23,6 +23,7 @@ const TOOLS: { id: Tool; glyph: string; label: string; key: string }[] = [
 export function Toolbar() {
   const engine = useApp((s) => s.engine);
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
+  const setAiOpen = useApp((s) => s.setAiOpen);
   const toggleSidebar = useApp((s) => s.toggleSidebar);
   const [tool, setTool] = useState<Tool>("select");
   const [title, setTitle] = useState(doc.title());
@@ -96,6 +97,10 @@ export function Toolbar() {
       </button>
 
       <InsertMenu />
+
+      <button className="tb ai-btn" onClick={() => setAiOpen(true)} title="Generate a diagram with AI">
+        ✨ AI
+      </button>
 
       <span className="spacer" data-tauri-drag-region />
 

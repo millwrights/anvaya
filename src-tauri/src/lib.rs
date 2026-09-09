@@ -5,6 +5,7 @@
 // are the typed bridge the web frontend calls to read and write it. The CRDT and
 // rendering stay in the frontend; only durable I/O lives here.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -83,6 +84,34 @@ fn list_files(dir: String, ext: String) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Provider-agnostic AI proxy: POST `body` (JSON) to `url` with `headers`, and
+/// return the raw response body. Runs in the native layer so it bypasses the
+/// webview's CORS and keeps API keys out of browser storage. The frontend owns
+/// the per-provider request/response shapes; this stays a dumb, generic pipe.
+#[tauri::command]
+async fn ai_complete(
+    url: String,
+    headers: HashMap<String, String>,
+    body: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut req = ureq::post(&url).set("content-type", "application/json");
+        for (k, v) in &headers {
+            req = req.set(k, v);
+        }
+        match req.send_string(&body) {
+            Ok(resp) => resp.into_string().map_err(|e| e.to_string()),
+            Err(ureq::Error::Status(code, resp)) => {
+                let detail = resp.into_string().unwrap_or_default();
+                Err(format!("HTTP {code}: {detail}"))
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -93,7 +122,8 @@ pub fn run() {
             read_text,
             write_text,
             delete_file,
-            list_files
+            list_files,
+            ai_complete
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anvaya");

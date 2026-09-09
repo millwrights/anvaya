@@ -21,6 +21,9 @@ export const native = {
   deleteFile: (path: string) => invoke<void>("delete_file", { path }),
   listFiles: (dir: string, ext: string) =>
     invoke<string[]>("list_files", { dir, ext }),
+  /** POST a JSON body to an AI endpoint through the native layer (no CORS). */
+  aiComplete: (url: string, headers: Record<string, string>, body: string) =>
+    invoke<string>("ai_complete", { url, headers, body }),
 };
 
 /** Native folder picker (returns the chosen directory, or null if cancelled). */

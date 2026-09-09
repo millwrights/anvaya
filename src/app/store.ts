@@ -8,6 +8,8 @@ interface AppStore {
   setPaletteOpen: (v: boolean) => void;
   sidebarOpen: boolean;
   toggleSidebar: () => void;
+  aiOpen: boolean;
+  setAiOpen: (v: boolean) => void;
 }
 
 export const useApp = create<AppStore>((set) => ({
@@ -17,4 +19,6 @@ export const useApp = create<AppStore>((set) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  aiOpen: false,
+  setAiOpen: (aiOpen) => set({ aiOpen }),
 }));
