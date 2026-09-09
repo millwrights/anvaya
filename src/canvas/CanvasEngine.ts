@@ -9,10 +9,11 @@ import {
   TextStyle,
   type Renderer,
 } from "pixi.js";
+import { getStrokePoints } from "perfect-freehand";
 import type { AnvayaDoc } from "@/document/doc";
 import type { Commands } from "@/commands/commands";
-import type { EdgeRouting, NodeStyle, SceneEdge, SceneNode } from "@/document/types";
-import { fontStack, onThemeChange, resolveStyle, shapeDefaults, theme } from "@/document/theme";
+import type { EdgeRouting, NodeShape, NodeStyle, SceneEdge, SceneNode } from "@/document/types";
+import { fontStack, onThemeChange, readableText, resolveStyle, shapeDefaults, theme } from "@/document/theme";
 import { Camera, type Point } from "@/render/camera";
 
 export type Tool =
@@ -27,7 +28,7 @@ export type Tool =
   | "text";
 
 const SHAPE_TOOLS: Tool[] = ["rect", "ellipse", "diamond", "sticky", "frame", "text"];
-export const INK_COLORS = ["#e8eaed", "#4c8dff", "#3ecf8e", "#ffcf5c", "#ff6b6b", "#c58cff"];
+export const INK_COLORS = ["#e8ebf0", "#2b6cff", "#16a34a", "#f5c400", "#f0392b", "#8b45ff"];
 export const INK_WIDTHS = [2, 3.5, 6];
 const DEFAULT_INK_COLOR = INK_COLORS[0];
 const DEFAULT_INK_WIDTH = INK_WIDTHS[0];
@@ -240,6 +241,48 @@ export class CanvasEngine {
   selectAll() {
     this.setSelection(this.doc.allNodes().map((n) => n.id));
   }
+
+  /**
+   * Move the selection to the nearest node in a cardinal direction (arrow-key
+   * navigation). Picks the closest node that lies within a 90° cone toward
+   * `dir`, and pans it into view. Returns true if it moved.
+   */
+  selectNeighbor(dir: "left" | "right" | "up" | "down"): boolean {
+    const cur = this.selection.size === 1 ? this.doc.getNode([...this.selection][0]) : null;
+    const nodes = this.doc.allNodes().filter((n) => n.shape !== "frame");
+    if (!nodes.length) return false;
+    // No single selection yet → just grab the top-left-most node to start.
+    if (!cur) {
+      const first = [...nodes].sort((a, b) => a.y - b.y || a.x - b.x)[0];
+      this.setSelection([first.id]);
+      this.panTo(first.x + first.w / 2, first.y + first.h / 2);
+      return true;
+    }
+    const cx = cur.x + cur.w / 2;
+    const cy = cur.y + cur.h / 2;
+    let best: SceneNode | null = null;
+    let bestScore = Infinity;
+    for (const n of nodes) {
+      if (n.id === cur.id) continue;
+      const dx = n.x + n.w / 2 - cx;
+      const dy = n.y + n.h / 2 - cy;
+      const along = dir === "right" ? dx : dir === "left" ? -dx : dir === "down" ? dy : -dy;
+      const across = dir === "left" || dir === "right" ? Math.abs(dy) : Math.abs(dx);
+      if (along <= 1 || across > along) continue; // must be within ~45° of the direction
+      const score = along + across * 0.5; // prefer close & well-aligned
+      if (score < bestScore) {
+        bestScore = score;
+        best = n;
+      }
+    }
+    if (!best) return false;
+    this.setSelection([best.id]);
+    const v = this.viewportWorld();
+    const bcx = best.x + best.w / 2;
+    const bcy = best.y + best.h / 2;
+    if (bcx < v.x || bcx > v.x + v.w || bcy < v.y || bcy > v.y + v.h) this.panTo(bcx, bcy);
+    return true;
+  }
   getEdgeSelection(): string | null {
     return this.edgeSel;
   }
@@ -274,6 +317,27 @@ export class CanvasEngine {
     if (!n) return null;
     const tl = this.camera.worldToScreen(n.x, n.y);
     return { x: tl.x, y: tl.y, w: n.w * this.camera.zoom, h: n.h * this.camera.zoom };
+  }
+
+  /** Screen-space bounding rect (CSS px) of the whole selection, for the
+   *  floating toolbar. Null when nothing (or only edges) is selected. */
+  selectionScreenRect() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id of this.selection) {
+      const r = this.nodeScreenRect(id);
+      if (!r) continue;
+      x0 = Math.min(x0, r.x);
+      y0 = Math.min(y0, r.y);
+      x1 = Math.max(x1, r.x + r.w);
+      y1 = Math.max(y1, r.y + r.h);
+    }
+    if (x0 === Infinity) return null;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  /** The node currently being text-edited (so overlays can hide), or null. */
+  getEditingId(): string | null {
+    return this.editingId;
   }
 
   requestEdit(id: string) {
@@ -541,7 +605,7 @@ export class CanvasEngine {
       `<text text-anchor="${anchor}" dominant-baseline="central" ` +
       `font-family="${esc(fontStack(s.fontFamily))}" font-size="${s.fontSize}" ` +
       `font-weight="${s.bold ? 700 : 500}" font-style="${s.italic ? "italic" : "normal"}" ` +
-      `fill="${s.textColor}"${deco ? ` text-decoration="${deco}"` : ""}>${tspans}</text>`
+      `fill="${readableText(s.textColor, s.fill)}"${deco ? ` text-decoration="${deco}"` : ""}>${tspans}</text>`
     );
   }
 
@@ -637,7 +701,7 @@ export class CanvasEngine {
       n.shape === "topic" ? "Topic" : n.shape === "text" ? "Text" : n.shape === "sticky" ? "Note" : "";
     const label = this.editingId === n.id ? "" : n.text.trim() || placeholder;
     if (label) {
-      const col = n.text.trim() ? s.textColor : theme.edge;
+      const col = n.text.trim() ? readableText(s.textColor, s.fill) : theme.edge;
       const align = s.align ?? "center";
       const ax = align === "left" ? 0 : align === "right" ? 1 : 0.5;
       const pad = 10;
@@ -697,7 +761,7 @@ export class CanvasEngine {
     const t = new Text({
       text: n.text.trim() || "Frame",
       style: new TextStyle({
-        fill: s.textColor,
+        fill: readableText(s.textColor, s.fill),
         fontSize: 14,
         fontWeight: "600",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -759,10 +823,37 @@ export class CanvasEngine {
     const pts = n.points;
     if (!pts || pts.length < 4) return;
     const g = new Graphics();
-    g.moveTo(n.x + pts[0], n.y + pts[1]);
-    for (let i = 2; i < pts.length; i += 2) g.lineTo(n.x + pts[i], n.y + pts[i + 1]);
+    this.inkStroke(g, pts, n.x, n.y, width);
     g.stroke({ color, width, cap: "round", join: "round" });
     this.contentLayer.addChild(g);
+  }
+
+  /**
+   * Build a smooth freehand path. perfect-freehand's `getStrokePoints` applies
+   * the same input streamlining tldraw uses (low-pass filter that removes the
+   * jitter/lag of Apple Pencil over Sidecar); we then draw quadratic curves
+   * through the smoothed points and STROKE the result (constant width). We stroke
+   * rather than fill an outline so overlapping/looping handwriting doesn't turn
+   * into filled blobs. `pts` is a flat [x0,y0,x1,y1,…] array.
+   */
+  private inkStroke(g: Graphics, pts: number[], ox: number, oy: number, width: number) {
+    const input: number[][] = [];
+    for (let i = 0; i < pts.length; i += 2) input.push([ox + pts[i], oy + pts[i + 1]]);
+    const sp = getStrokePoints(input, { streamline: 0.55, size: width });
+    const n = sp.length;
+    if (n < 2) return;
+    const px = (i: number) => sp[i].point[0];
+    const py = (i: number) => sp[i].point[1];
+    g.moveTo(px(0), py(0));
+    if (n < 3) {
+      for (let i = 1; i < n; i++) g.lineTo(px(i), py(i));
+      return;
+    }
+    let i = 1;
+    for (; i < n - 2; i++) {
+      g.quadraticCurveTo(px(i), py(i), (px(i) + px(i + 1)) / 2, (py(i) + py(i + 1)) / 2);
+    }
+    g.quadraticCurveTo(px(n - 2), py(n - 2), px(n - 1), py(n - 1));
   }
 
   // ── drag-to-draw previews (world space, above nodes) ───────────────────────
@@ -784,8 +875,7 @@ export class CanvasEngine {
     const g = this.previewGfx;
     g.clear();
     if (pts.length < 4) return;
-    g.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    this.inkStroke(g, pts, 0, 0, this.inkWidth);
     g.stroke({ color: this.inkColor, width: this.inkWidth, cap: "round", join: "round" });
   }
 
@@ -1161,10 +1251,11 @@ export class CanvasEngine {
         .stroke({ color: theme.accent, width: 1.5 / z, alpha: 0.5 });
       this.overlayLayer.addChild(ring);
     }
-    // faint hints on each side that the border is grabbable
+    // Grab handles on each side — drag one out to draw a connector, or drop in
+    // empty space to spawn a new connected node (Miro-style quick-connect).
     for (const h of this.connectHandles(n)) {
       const g = new Graphics();
-      g.circle(h.x, h.y, 3.5 / z).fill({ color: theme.accent, alpha: 0.55 });
+      g.circle(h.x, h.y, 4.5 / z).fill("#ffffff").stroke({ color: theme.accent, width: 1.5 / z });
       this.overlayLayer.addChild(g);
     }
     // live anchor: the exact spot the connector will attach as you move along the edge
@@ -1334,6 +1425,9 @@ export class CanvasEngine {
     let wpEdge: string | null = null; // connector being reshaped
     let wpIndex = 0;
     let wpEnd: "source" | "target" | null = null; // dragging a connector endpoint
+    // Quick-connect (Miro-style): a link dragged out from a hovered node's border
+    // with the select tool. Dropped in empty space it spawns a new connected node.
+    let linkQuick = false;
 
     const dragWaypoint = (world: Point) => {
       if (!wpEdge) return;
@@ -1397,6 +1491,7 @@ export class CanvasEngine {
           linkSource = { nodeId: "", x: world.x, y: world.y };
         }
         mode = "link";
+        linkQuick = false;
         this.previewLink({ x: linkSource.x, y: linkSource.y }, world);
         return;
       }
@@ -1433,6 +1528,7 @@ export class CanvasEngine {
       const ch = this.hitConnectZone(world);
       if (ch && this.tool === "select") {
         mode = "link";
+        linkQuick = true;
         linkSource = ch;
         this.previewLink({ x: ch.x, y: ch.y }, world);
         return;
@@ -1521,7 +1617,22 @@ export class CanvasEngine {
       } else if (mode === "create") {
         this.previewShape(toolShape(this.tool), downWorld, world);
       } else if (mode === "draw") {
-        strokePts.push(world.x, world.y);
+        // Apple Pencil (and other high-rate pointers) coalesce many samples into
+        // one move event; pull them all out so the stroke follows the real path
+        // instead of one jagged point per frame. Drop near-duplicate samples.
+        const samples = e.getCoalescedEvents?.() ?? [];
+        const minWorld = 0.6 / this.camera.zoom; // ~0.6 screen px
+        for (const ev of samples.length ? samples : [e]) {
+          const lp = localXY(ev);
+          const w = this.camera.screenToWorld(lp.x, lp.y);
+          const m = strokePts.length;
+          if (m >= 2) {
+            const ex = w.x - strokePts[m - 2];
+            const ey = w.y - strokePts[m - 1];
+            if (ex * ex + ey * ey < minWorld * minWorld) continue;
+          }
+          strokePts.push(w.x, w.y);
+        }
         this.previewStroke(strokePts);
       } else if (mode === "wp") {
         dragWaypoint(world);
@@ -1570,6 +1681,21 @@ export class CanvasEngine {
         const target = this.hitNode(world);
         // Ignore accidental taps that didn't actually drag anywhere.
         const dist = Math.hypot(world.x - src.x, world.y - src.y);
+        // Miro-style quick-connect: dragged out from a node into empty space →
+        // spawn a new connected node at the drop point and open it for typing.
+        if (linkQuick && src.nodeId !== "" && !target && dist >= 14 / this.camera.zoom) {
+          const source = this.doc.getNode(src.nodeId);
+          const shape = quickConnectShape(source?.shape);
+          const node = this.cmd.createNode({ shape, x: world.x, y: world.y });
+          this.cmd.connect(src.nodeId, node.id, "flow");
+          this.setSelection([node.id]);
+          this.requestEdit(node.id);
+          linkSource = null;
+          linkQuick = false;
+          this.clearPreview();
+          mode = "idle";
+          return;
+        }
         if (dist >= 6 / this.camera.zoom) {
           const ends: {
             sourceAnchor?: { fx: number; fy: number };
@@ -1581,7 +1707,7 @@ export class CanvasEngine {
           if (src.nodeId !== "") ends.sourceAnchor = { fx: src.fx!, fy: src.fy! };
           else ends.sourcePoint = { x: Math.round(src.x), y: Math.round(src.y) };
           // Target end: attach if released on an object, else leave it open-ended.
-          if (target && target.id !== src.nodeId) ends.targetAnchor = freeAnchor(target, world);
+          if (target && target.id !== src.nodeId) ends.targetAnchor = cleanAnchor(freeAnchor(target, world));
           else ends.targetPoint = { x: Math.round(world.x), y: Math.round(world.y) };
           const edge = this.cmd.connect(src.nodeId, target ? target.id : "", "flow", ends);
           // A freehand endpoint inside an object would hide behind it — lift it.
@@ -1600,7 +1726,7 @@ export class CanvasEngine {
         const e = this.doc.getEdge(wpEdge);
         const otherId = wpEnd === "source" ? e?.target : e?.source;
         if (node && node.id !== otherId) {
-          const anchor = freeAnchor(node, world);
+          const anchor = cleanAnchor(freeAnchor(node, world));
           this.cmd.setEdgeEndpoint(wpEdge, wpEnd, { node: node.id, anchor });
           if (isInteriorAnchor(anchor)) this.cmd.bringToFront([wpEdge]);
         }
@@ -1752,6 +1878,11 @@ export class CanvasEngine {
     this.markCamera();
   }
 
+  /** Zoom to an absolute level (1 = 100%), centered on the viewport. */
+  zoomTo(level: number) {
+    this.zoomBy(level / this.camera.zoom);
+  }
+
   // ── overview helpers (minimap) ─────────────────────────────────────────────
   contentBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
     const nodes = this.doc.allNodes();
@@ -1798,6 +1929,13 @@ function anchorPoint(n: SceneNode, a: { fx: number; fy: number }): Point {
   return { x: n.x + a.fx * n.w, y: n.y + a.fy * n.h };
 }
 
+/** Shape a quick-connect spawns: mirror the source when it's a labelled box,
+ *  else fall back to a plain rounded card (frames/images/strokes/text). */
+function quickConnectShape(src?: SceneNode["shape"]): NodeShape {
+  const mirror: NodeShape[] = ["topic", "rect", "rounded", "ellipse", "diamond", "note", "sticky"];
+  return src && mirror.includes(src) ? src : "rounded";
+}
+
 /** Shortest distance from a point to the node's rectangular border. */
 function distToPerimeter(n: SceneNode, p: Point): number {
   const left = n.x,
@@ -1817,6 +1955,17 @@ function isInteriorAnchor(a?: { fx: number; fy: number }): boolean {
   if (!a) return false;
   const m = 0.15;
   return a.fx > m && a.fx < 1 - m && a.fy > m && a.fy < 1 - m;
+}
+
+/** Snap a free anchor to a clean point (edge-midpoints, corners, or center) when
+ *  it lands near one — so most connectors attach tidily, while an intentional
+ *  off-point drop stays exactly where you put it. */
+function cleanAnchor(a: { fx: number; fy: number }): { fx: number; fy: number } {
+  const snap = (v: number) => {
+    for (const t of [0, 0.5, 1]) if (Math.abs(v - t) < 0.16) return t;
+    return v;
+  };
+  return { fx: snap(a.fx), fy: snap(a.fy) };
 }
 
 /** The exact point under `p`, clamped to the box, as fractions [0..1] — no border snap.

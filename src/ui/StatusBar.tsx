@@ -27,7 +27,24 @@ export function StatusBar() {
       <span>
         {stats.nodes} nodes · {stats.edges} edges
       </span>
-      <span>{Math.round(stats.zoom * 100)}%</span>
+      <div className="zoomctl">
+        <button className="zc-btn" title="Zoom out" onClick={() => engine?.zoomBy(1 / 1.2)}>
+          −
+        </button>
+        <button
+          className="zc-pct"
+          title="Reset to 100%"
+          onClick={() => engine?.zoomTo(1)}
+        >
+          {Math.round(stats.zoom * 100)}%
+        </button>
+        <button className="zc-btn" title="Zoom in" onClick={() => engine?.zoomBy(1.2)}>
+          +
+        </button>
+        <button className="zc-btn zc-fit" title="Zoom to fit" onClick={() => engine?.zoomToFit()}>
+          ⤢
+        </button>
+      </div>
     </div>
   );
 }

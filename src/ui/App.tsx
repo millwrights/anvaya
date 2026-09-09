@@ -132,6 +132,16 @@ export function App() {
             }
           }
           break;
+        case "ArrowLeft":
+        case "ArrowRight":
+        case "ArrowUp":
+        case "ArrowDown": {
+          const dir = (
+            { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const
+          )[e.key];
+          if (engine.selectNeighbor(dir)) e.preventDefault();
+          break;
+        }
         case "Delete":
         case "Backspace":
           if (sel.length) {

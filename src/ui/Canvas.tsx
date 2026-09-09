@@ -4,6 +4,7 @@ import { commands, doc, initSession } from "@/app/session";
 import { setCursor } from "@/app/collab";
 import { useApp } from "@/app/store";
 import { EditorOverlay } from "./EditorOverlay";
+import { FloatingToolbar } from "./FloatingToolbar";
 import { PresenceLayer } from "./PresenceLayer";
 
 export function Canvas() {
@@ -45,6 +46,7 @@ export function Canvas() {
     <div className="stage-wrap">
       <div className="stage" ref={hostRef} />
       <PresenceLayer />
+      <FloatingToolbar />
       <EditorOverlay
         getEngine={() => engineRef.current}
         registerOpen={(fn) => (editRef.current = fn)}
