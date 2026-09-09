@@ -1,0 +1,17 @@
+{
+  "name": "anvaya-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server that lets any AI agent build diagrams in an Anvaya workspace.",
+  "type": "module",
+  "bin": {
+    "anvaya-mcp": "server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  }
+}

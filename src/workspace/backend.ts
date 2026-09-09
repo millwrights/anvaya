@@ -101,6 +101,10 @@ class Workspace {
   info: WorkspaceInfo;
   current: string | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  // External-change watcher (picks up diagrams an AI agent / MCP server wrote).
+  private watch: ReturnType<typeof setInterval> | null = null;
+  private lastListKey = "";
+  private lastDiskText: string | null = null;
 
   constructor(
     private doc: AnvayaDoc,
@@ -133,6 +137,7 @@ class Workspace {
       await this.flushNow();
     }
     this.startAutosave();
+    this.startWatch();
   }
 
   async listDiagrams(): Promise<DiagramMeta[]> {
@@ -248,7 +253,39 @@ class Workspace {
     const text = await this.storage.read(name);
     if (text) this.doc.loadJSON(parseDocument(text));
     this.current = name;
+    this.lastDiskText = text ?? null;
     this.doc.undoManager.clear();
+  }
+
+  /** Poll for changes made on disk outside the app (e.g. by the MCP server):
+   *  refresh the list when diagrams appear/disappear, and reload the open one if
+   *  it changed externally — but only while idle, so it never clobbers edits. */
+  private startWatch() {
+    if (this.watch) return;
+    this.watch = setInterval(() => void this.poll(), 2500);
+  }
+  private async poll() {
+    try {
+      const files = await this.storage.list();
+      const key = files.join("|");
+      if (this.lastListKey && key !== this.lastListKey) notify(); // new/removed diagram
+      this.lastListKey = key;
+      // Reload the current diagram only for on-disk workspaces, when the user
+      // isn't mid-edit (no pending autosave) and the file actually differs.
+      if (
+        this.info.kind === "folder" &&
+        this.current &&
+        this.timer === null &&
+        files.includes(this.current)
+      ) {
+        const text = await this.storage.read(this.current);
+        if (text != null && this.lastDiskText != null && text !== this.lastDiskText) {
+          await this.reloadCurrent();
+        }
+      }
+    } catch {
+      /* transient FS error — try again next tick */
+    }
   }
 
   private startAutosave() {
@@ -271,14 +308,17 @@ class Workspace {
       this.timer = null;
     }
     if (!this.current) return;
-    await this.storage.write(
-      this.current,
-      serializeDocument(this.doc.toJSON()),
-    );
+    const text = serializeDocument(this.doc.toJSON());
+    await this.storage.write(this.current, text);
+    this.lastDiskText = text; // so the watcher doesn't treat our own save as external
   }
 
   async dispose() {
     this.stopAutosave();
+    if (this.watch) {
+      clearInterval(this.watch);
+      this.watch = null;
+    }
     await this.flushNow();
   }
 }
