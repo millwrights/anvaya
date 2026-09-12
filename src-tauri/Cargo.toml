@@ -1,6 +1,6 @@
 [package]
 name = "anvaya"
-version = "0.5.0"
+version = "0.5.1"
 description = "Anvaya — visual thinking, unified."
 authors = ["Anvaya"]
 edition = "2021"
