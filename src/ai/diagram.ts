@@ -8,6 +8,7 @@ import type { NodeShape } from "@/document/types";
 import { fitBox } from "@/document/textfit";
 import { chat } from "./provider";
 import { parseMermaid } from "./mermaid";
+import { backEdges, edgeKey, layoutGraph } from "./layout";
 import type { AiConfig } from "./config";
 
 const ALLOWED: NodeShape[] = ["rounded", "rect", "ellipse", "diamond", "note", "sticky", "topic"];
@@ -70,30 +71,6 @@ function extractJson(text: string): DiagramSpec {
 const shapeOf = (s?: string): NodeShape =>
   s && (ALLOWED as string[]).includes(s) ? (s as NodeShape) : "rounded";
 
-/** Longest-path layering (topological) so a DAG reads as clean top-down layers. */
-function layers(ids: string[], edges: SpecEdge[]): Map<string, number> {
-  const succ = new Map<string, string[]>();
-  const indeg = new Map<string, number>();
-  ids.forEach((id) => (succ.set(id, []), indeg.set(id, 0)));
-  for (const e of edges) {
-    if (!succ.has(e.from) || !indeg.has(e.to)) continue;
-    succ.get(e.from)!.push(e.to);
-    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
-  }
-  const depth = new Map(ids.map((id) => [id, 0]));
-  const left = new Map(indeg);
-  const queue = ids.filter((id) => left.get(id) === 0);
-  while (queue.length) {
-    const u = queue.shift()!;
-    for (const v of succ.get(u)!) {
-      depth.set(v, Math.max(depth.get(v)!, depth.get(u)! + 1));
-      left.set(v, left.get(v)! - 1);
-      if (left.get(v) === 0) queue.push(v);
-    }
-  }
-  return depth; // nodes in cycles keep depth 0 (still get placed)
-}
-
 export interface BuildResult {
   title?: string;
   nodeCount: number;
@@ -122,51 +99,20 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
   const ids = spec.nodes.map((n) => n.id);
   const idset = new Set(ids);
   const edges = spec.edges.filter((e) => idset.has(e.from) && idset.has(e.to));
-  const depth = layers(ids, edges);
-
-  // Group node ids by layer, preserving the model's order within each layer.
-  const byLayer = new Map<number, string[]>();
-  for (const id of ids) {
-    const d = depth.get(id) ?? 0;
-    if (!byLayer.has(d)) byLayer.set(d, []);
-    byLayer.get(d)!.push(id);
-  }
-
-  const H_GAP = 70; // gap between boxes in a layer
-  const V_GAP = 90; // gap between layers
 
   // Pre-measure each node's box so the layout leaves room for its text.
   const dims = new Map<string, { w: number; h: number }>();
   for (const n of spec.nodes) {
-    const shape = shapeOf(n.shape);
-    const fit = fitBox(shape, {}, n.label ?? "");
+    const fit = fitBox(shapeOf(n.shape), {}, n.label ?? "");
     dims.set(n.id, fit ?? { w: 150, h: 64 });
   }
+  const size = (id: string) => dims.get(id)!;
 
-  // Lay out centered on (0,0), packing each layer by real box sizes so nothing
-  // overlaps; then translate to the current viewport center.
-  const layerDepths = [...byLayer.keys()].sort((a, b) => a - b);
-  const rowH = new Map<number, number>();
-  for (const d of layerDepths)
-    rowH.set(d, Math.max(...byLayer.get(d)!.map((id) => dims.get(id)!.h)));
-  const totalH =
-    layerDepths.reduce((s, d) => s + rowH.get(d)!, 0) + V_GAP * (layerDepths.length - 1);
+  // Break cycles, then layer/order/place on the forward (DAG) edges.
+  const back = backEdges(ids, edges);
+  const forward = edges.filter((e) => !back.has(edgeKey(e.from, e.to)));
+  const { depth, pos, bbox } = layoutGraph(ids, forward, size);
 
-  const pos = new Map<string, { x: number; y: number }>();
-  let ly = -totalH / 2;
-  for (const d of layerDepths) {
-    const layerIds = byLayer.get(d)!;
-    const rh = rowH.get(d)!;
-    const rowW =
-      layerIds.reduce((s, id) => s + dims.get(id)!.w, 0) + H_GAP * (layerIds.length - 1);
-    let lx = -rowW / 2;
-    for (const id of layerIds) {
-      const w = dims.get(id)!.w;
-      pos.set(id, { x: lx + w / 2, y: ly + rh / 2 });
-      lx += w + H_GAP;
-    }
-    ly += rh + V_GAP;
-  }
   const v = engine.viewportWorld();
   const cx = v.x + v.w / 2;
   const cy = v.y + v.h / 2;
@@ -185,9 +131,30 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
       });
       real.set(n.id, node.id);
     }
+    let lane = 0;
+    const gutterBase = cx + bbox.maxX + 60; // right of every box
     for (const e of edges) {
-      const edge = commands.connect(real.get(e.from)!, real.get(e.to)!, "flow");
-      if (e.label) commands.updateEdge(edge.id, { label: String(e.label).slice(0, 80) });
+      const ds = depth.get(e.from) ?? 0;
+      const dt = depth.get(e.to) ?? 0;
+      const channel = !back.has(edgeKey(e.from, e.to)) && dt === ds + 1;
+      // Adjacent forward edges route cleanly in the vertical channel; back-edges
+      // and layer-skipping edges detour through a staggered side gutter so no
+      // connector is hidden under, or drawn across, another box.
+      const ends = channel
+        ? undefined
+        : { sourceAnchor: { fx: 1, fy: 0.5 }, targetAnchor: { fx: 1, fy: 0.5 } };
+      const edge = commands.connect(real.get(e.from)!, real.get(e.to)!, "flow", ends);
+      const patch: Record<string, unknown> = {};
+      if (e.label) patch.label = String(e.label).slice(0, 80);
+      if (!channel) {
+        const laneX = Math.round(gutterBase + lane++ * 46);
+        patch.routing = "step";
+        patch.waypoints = [
+          { x: laneX, y: Math.round(cy + pos.get(e.from)!.y) },
+          { x: laneX, y: Math.round(cy + pos.get(e.to)!.y) },
+        ];
+      }
+      if (Object.keys(patch).length) commands.updateEdge(edge.id, patch);
     }
   });
 

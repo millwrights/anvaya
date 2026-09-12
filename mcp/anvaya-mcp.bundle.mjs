@@ -21520,45 +21520,111 @@ function layers(ids, edges) {
   }
   return depth;
 }
+var H_GAP = 100;
+var V_GAP = 140;
+var EK = (a, b) => a + "\0" + b;
+function backEdges(ids, edges) {
+  const adj = new Map(ids.map((id) => [id, []]));
+  for (const e of edges) if (adj.has(e.from) && adj.has(e.to)) adj.get(e.from).push(e.to);
+  const state = new Map(ids.map((id) => [id, 0]));
+  const back = /* @__PURE__ */ new Set();
+  const stack = [];
+  for (const start of ids) {
+    if (state.get(start) !== 0) continue;
+    stack.push([start, 0]);
+    state.set(start, 1);
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const [u, i] = frame;
+      const nbrs = adj.get(u);
+      if (i < nbrs.length) {
+        frame[1]++;
+        const v = nbrs[i];
+        const s = state.get(v);
+        if (s === 1) back.add(EK(u, v));
+        else if (s === 0) {
+          state.set(v, 1);
+          stack.push([v, 0]);
+        }
+      } else {
+        state.set(u, 2);
+        stack.pop();
+      }
+    }
+  }
+  return back;
+}
+function layoutGraph(ids, edges, size) {
+  const depth = layers(ids, edges);
+  const maxD = Math.max(0, ...ids.map((id) => depth.get(id) ?? 0));
+  const layerArr = Array.from({ length: maxD + 1 }, () => []);
+  for (const id of ids) layerArr[depth.get(id) ?? 0].push(id);
+  const pred = new Map(ids.map((id) => [id, []]));
+  const succ = new Map(ids.map((id) => [id, []]));
+  for (const e of edges) {
+    if (succ.has(e.from) && pred.has(e.to)) {
+      succ.get(e.from).push(e.to);
+      pred.get(e.to).push(e.from);
+    }
+  }
+  const idx = /* @__PURE__ */ new Map();
+  const reindex = () => layerArr.forEach((layer) => layer.forEach((id, i) => idx.set(id, i)));
+  reindex();
+  for (let iter = 0; iter < 6; iter++) {
+    const down = iter % 2 === 0;
+    const order = down ? [...layerArr.keys()] : [...layerArr.keys()].reverse();
+    for (const d of order) {
+      const neigh = down ? pred : succ;
+      const bc = /* @__PURE__ */ new Map();
+      layerArr[d].forEach((id, i) => {
+        const vs = neigh.get(id).map((n) => idx.get(n)).filter((v) => v != null);
+        bc.set(id, vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : i);
+      });
+      layerArr[d].sort((a, b) => bc.get(a) - bc.get(b));
+      layerArr[d].forEach((id, i) => idx.set(id, i));
+    }
+  }
+  const rowH = layerArr.map((layer) => Math.max(0, ...layer.map((id) => size(id)[1])));
+  const totalH = rowH.reduce((a, b) => a + b, 0) + V_GAP * (layerArr.length - 1);
+  const pos = /* @__PURE__ */ new Map();
+  let y = -totalH / 2;
+  for (let d = 0; d < layerArr.length; d++) {
+    const rowW = layerArr[d].reduce((s, id) => s + size(id)[0], 0) + H_GAP * (layerArr[d].length - 1);
+    let x = -rowW / 2;
+    for (const id of layerArr[d]) {
+      const [w] = size(id);
+      pos.set(id, { x: x + w / 2, y: y + rowH[d] / 2 });
+      x += w + H_GAP;
+    }
+    y += rowH[d] + V_GAP;
+  }
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const id of ids) {
+    const p = pos.get(id);
+    const [w, h] = size(id);
+    minX = Math.min(minX, p.x - w / 2);
+    maxX = Math.max(maxX, p.x + w / 2);
+    minY = Math.min(minY, p.y - h / 2);
+    maxY = Math.max(maxY, p.y + h / 2);
+  }
+  return { depth, pos, bbox: { minX, maxX, minY, maxY } };
+}
 function buildRecords(spec, startZ, originX, originY) {
   const specNodes = spec.nodes ?? [];
   const ids = specNodes.map((n) => n.id);
   const idset = new Set(ids);
   const specEdges = (spec.edges ?? []).filter((e) => idset.has(e.from) && idset.has(e.to));
-  const depth = layers(ids, specEdges);
-  const size = /* @__PURE__ */ new Map();
-  for (const n of specNodes) size.set(n.id, fitSize(shapeOf(n.shape), n.label));
-  const byLayer = /* @__PURE__ */ new Map();
-  for (const id of ids) {
-    const d = depth.get(id) ?? 0;
-    if (!byLayer.has(d)) byLayer.set(d, []);
-    byLayer.get(d).push(id);
-  }
-  const H_GAP = 70;
-  const V_GAP = 90;
-  const layerDepths = [...byLayer.keys()].sort((a, b) => a - b);
-  const rowH = /* @__PURE__ */ new Map();
-  for (const d of layerDepths) rowH.set(d, Math.max(...byLayer.get(d).map((id) => size.get(id)[1])));
-  const totalH = layerDepths.reduce((s, d) => s + rowH.get(d), 0) + V_GAP * (layerDepths.length - 1);
-  const pos = /* @__PURE__ */ new Map();
-  let y = -totalH / 2;
-  for (const d of layerDepths) {
-    const layerIds = byLayer.get(d);
-    const rh = rowH.get(d);
-    const rowW = layerIds.reduce((s, id) => s + size.get(id)[0], 0) + H_GAP * (layerIds.length - 1);
-    let x = -rowW / 2;
-    for (const id of layerIds) {
-      const [w] = size.get(id);
-      pos.set(id, { x: x + w / 2, y: y + rh / 2 });
-      x += w + H_GAP;
-    }
-    y += rh + V_GAP;
-  }
+  const sizeMap = /* @__PURE__ */ new Map();
+  for (const n of specNodes) sizeMap.set(n.id, fitSize(shapeOf(n.shape), n.label));
+  const size = (id) => sizeMap.get(id);
+  const back = backEdges(ids, specEdges);
+  const forward = specEdges.filter((e) => !back.has(EK(e.from, e.to)));
+  const { depth, pos, bbox } = layoutGraph(ids, forward, size);
   const real = /* @__PURE__ */ new Map();
   let z = startZ;
   const nodes = specNodes.map((n) => {
     const shape = shapeOf(n.shape);
-    const [w, h] = size.get(n.id);
+    const [w, h] = size(n.id);
     const p = pos.get(n.id);
     const cx = originX + p.x;
     const cy = originY + p.y;
@@ -21579,17 +21645,34 @@ function buildRecords(spec, startZ, originX, originY) {
       z: z++
     };
   });
-  const edges = specEdges.map((e) => ({
-    id: rand(),
-    source: real.get(e.from),
-    target: real.get(e.to),
-    kind: "flow",
-    routing: "curved",
-    label: e.label ? String(e.label).slice(0, 80) : "",
-    style: {},
-    arrowStart: false,
-    arrowEnd: true
-  }));
+  let gutterLane = 0;
+  const gutterBase = originX + bbox.maxX + 60;
+  const edges = specEdges.map((e) => {
+    const ds = depth.get(e.from) ?? 0;
+    const dt = depth.get(e.to) ?? 0;
+    const edge = {
+      id: rand(),
+      source: real.get(e.from),
+      target: real.get(e.to),
+      kind: "flow",
+      routing: "curved",
+      label: e.label ? String(e.label).slice(0, 80) : "",
+      style: {},
+      arrowStart: false,
+      arrowEnd: true
+    };
+    const channel = !back.has(EK(e.from, e.to)) && dt === ds + 1;
+    if (!channel) {
+      const laneX = Math.round(gutterBase + gutterLane++ * 46);
+      const fy = Math.round(originY + pos.get(e.from).y);
+      const ty = Math.round(originY + pos.get(e.to).y);
+      edge.routing = "step";
+      edge.sourceAnchor = { fx: 1, fy: 0.5 };
+      edge.targetAnchor = { fx: 1, fy: 0.5 };
+      edge.waypoints = [{ x: laneX, y: fy }, { x: laneX, y: ty }];
+    }
+    return edge;
+  });
   return { nodes, edges };
 }
 async function listFiles() {
