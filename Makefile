@@ -123,6 +123,19 @@ dist:
 		|| echo "⚠ no .dmg found in $(BUNDLE_REL)/dmg/"
 	@ls -lh $(DIST_DIR)/*.dmg 2>/dev/null || true
 
+# Package a release zip: build → re-sign the bundle with a VALID ad-hoc
+# signature (the raw Tauri bundle is only linker-signed and fails strict verify,
+# which reads as "damaged" on other Macs) → verify → zip into $(DIST_DIR)/.
+# This is the artifact to attach to a GitHub release.
+release-zip: app
+	@codesign --force --deep -s - "$(APP_REL)"
+	@codesign --verify --strict "$(APP_REL)" \
+		&& echo "  signature OK" \
+		|| { echo "!! signature invalid — refusing to package"; exit 1; }
+	@mkdir -p $(DIST_DIR)
+	@ditto -c -k --keepParent "$(APP_REL)" "$(DIST_DIR)/$(APP)-v$(VERSION)-macos-arm64.zip"
+	@echo "✓ $(DIST_DIR)/$(APP)-v$(VERSION)-macos-arm64.zip"
+
 # ── code signing / notarization (Apple Developer ID) ─────────────────────────
 # Just sign the app bundle with the hardened runtime (no notarization).
 sign: app
