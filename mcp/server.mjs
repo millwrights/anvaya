@@ -10,12 +10,18 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
+  addEdge,
   appendToDiagram,
   createDiagram,
+  deleteNode,
+  describeDiagram,
   listDiagrams,
   readDiagram,
+  setNodeColor,
+  updateNode,
   workspaceRoot,
 } from "./anvaya.mjs";
+import { parseMermaid } from "./mermaid.mjs";
 
 const server = new McpServer({ name: "anvaya", version: "0.1.0" });
 
@@ -71,7 +77,7 @@ server.tool(
 
 server.tool(
   "create_diagram",
-  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-laid-out top-down and colored by the app. Returns the created file name.",
+  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. Returns the created file name.",
   {
     title: z.string().describe("Diagram title."),
     nodes: z.array(nodeSchema).min(1).describe("The shapes."),
@@ -100,6 +106,95 @@ server.tool(
   async (args) => {
     try {
       return ok(await appendToDiagram(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "create_from_mermaid",
+  "Create a NEW diagram from Mermaid flowchart text (graph/flowchart TD|LR with the usual node shapes and --> / -.-> / ==> edges). Shapes are mapped to native ones, auto-sized, laid out, and colored.",
+  {
+    title: z.string().describe("Diagram title."),
+    mermaid: z.string().describe("Mermaid flowchart source."),
+  },
+  async ({ title, mermaid }) => {
+    try {
+      const spec = parseMermaid(mermaid);
+      if (!spec.nodes.length) throw new Error("No nodes parsed from the Mermaid source.");
+      const r = await createDiagram({ title: title || spec.title || "Diagram", nodes: spec.nodes, edges: spec.edges });
+      return ok({ ...r, note: 'Open or "Reload from disk" in Anvaya to see it.' });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "describe_diagram",
+  "Inspect a diagram's geometry and flag any overlapping boxes, so you can check and fix layout after editing.",
+  { name: z.string().describe("The .anvaya file name.") },
+  async ({ name }) => {
+    try {
+      return ok(await describeDiagram(name));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "update_node",
+  "Relabel and/or reshape one node by id (from read_diagram). The box auto-refits to the new text.",
+  {
+    name: z.string(),
+    id: z.string().describe("Node id from read_diagram."),
+    label: z.string().optional(),
+    shape: z.enum(SHAPES).optional(),
+  },
+  async (args) => {
+    try {
+      return ok(await updateNode(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "delete_node",
+  "Delete a node by id, along with any connectors touching it.",
+  { name: z.string(), id: z.string() },
+  async (args) => {
+    try {
+      return ok(await deleteNode(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "set_node_color",
+  "Set a node's fill color (hex like #2b6cff), or pass an empty string to reset to the theme default.",
+  { name: z.string(), id: z.string(), color: z.string().describe("Hex color, or '' to reset.") },
+  async (args) => {
+    try {
+      return ok(await setNodeColor(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "add_edge",
+  "Connect two existing nodes (by id) with a directed arrow.",
+  { name: z.string(), from: z.string(), to: z.string(), label: z.string().optional() },
+  async (args) => {
+    try {
+      return ok(await addEdge(args));
     } catch (e) {
       return fail(e);
     }

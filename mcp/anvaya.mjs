@@ -11,16 +11,30 @@ import path from "node:path";
 
 const ALLOWED_SHAPES = ["rounded", "rect", "ellipse", "diamond", "note", "sticky", "topic"];
 
-// Default sizes must match the app's shapeDefaults (src/document/theme.ts).
-const SHAPE_SIZE = {
-  topic: [150, 44],
-  rect: [150, 64],
-  rounded: [150, 64],
-  ellipse: [140, 80],
-  diamond: [150, 90],
-  note: [180, 100],
-  sticky: [168, 168],
-};
+// Size a box to its label so text doesn't overflow. Node has no canvas to
+// measure with, so estimate from character counts (the app re-fits precisely on
+// edit). Approximates a ~15px sans font with pad=10 like the renderer.
+const CHAR_W = 8.0; // avg px per character
+const LINE_H = 20; // px per line
+const H_PAD = 20; // total horizontal padding
+const V_PAD = 22; // total vertical padding
+const MIN_W = 110;
+const MAX_W = 300;
+const MIN_H = 48;
+
+function fitSize(shape, label) {
+  if (shape === "sticky") return [168, 168];
+  const lines = String(label ?? "").split("\n");
+  const longest = Math.max(1, ...lines.map((l) => l.length));
+  let w = Math.min(MAX_W, Math.max(MIN_W, Math.round(longest * CHAR_W) + H_PAD));
+  const contentW = w - H_PAD;
+  let rows = 0;
+  for (const l of lines) rows += Math.max(1, Math.ceil((l.length * CHAR_W) / contentW));
+  let h = Math.max(MIN_H, rows * LINE_H + V_PAD);
+  if (shape === "ellipse") { w = Math.round(w * 1.3); h = Math.round(h * 1.5); }
+  if (shape === "diamond") { w = Math.round(w * 1.5); h = Math.round(h * 1.7); }
+  return [w, h];
+}
 
 export function workspaceRoot() {
   const env = process.env.ANVAYA_WORKSPACE;
@@ -103,29 +117,47 @@ function buildRecords(spec, startZ, originX, originY) {
   const specEdges = (spec.edges ?? []).filter((e) => idset.has(e.from) && idset.has(e.to));
   const depth = layers(ids, specEdges);
 
+  // Pre-compute every node's box size so the layout can leave room for it.
+  const size = new Map();
+  for (const n of specNodes) size.set(n.id, fitSize(shapeOf(n.shape), n.label));
+
   const byLayer = new Map();
   for (const id of ids) {
     const d = depth.get(id) ?? 0;
     if (!byLayer.has(d)) byLayer.set(d, []);
     byLayer.get(d).push(id);
   }
-  const H_GAP = 220;
-  const V_GAP = 150;
-  const maxDepth = Math.max(0, ...ids.map((id) => depth.get(id) ?? 0));
+  const H_GAP = 70; // gap between boxes in a layer
+  const V_GAP = 90; // gap between layers
+  const layerDepths = [...byLayer.keys()].sort((a, b) => a - b);
+
+  // Vertical: each layer's row height is its tallest box; stack with V_GAP.
+  const rowH = new Map();
+  for (const d of layerDepths) rowH.set(d, Math.max(...byLayer.get(d).map((id) => size.get(id)[1])));
+  const totalH = layerDepths.reduce((s, d) => s + rowH.get(d), 0) + V_GAP * (layerDepths.length - 1);
 
   const pos = new Map();
-  for (const [d, layerIds] of byLayer) {
-    const k = layerIds.length;
-    layerIds.forEach((id, i) => {
-      pos.set(id, { x: (i - (k - 1) / 2) * H_GAP, y: (d - maxDepth / 2) * V_GAP });
-    });
+  let y = -totalH / 2;
+  for (const d of layerDepths) {
+    const layerIds = byLayer.get(d);
+    const rh = rowH.get(d);
+    // Horizontal: pack boxes left-to-right by their widths, centered.
+    const rowW =
+      layerIds.reduce((s, id) => s + size.get(id)[0], 0) + H_GAP * (layerIds.length - 1);
+    let x = -rowW / 2;
+    for (const id of layerIds) {
+      const [w] = size.get(id);
+      pos.set(id, { x: x + w / 2, y: y + rh / 2 }); // centers
+      x += w + H_GAP;
+    }
+    y += rh + V_GAP;
   }
 
   const real = new Map();
   let z = startZ;
   const nodes = specNodes.map((n) => {
     const shape = shapeOf(n.shape);
-    const [w, h] = SHAPE_SIZE[shape] ?? SHAPE_SIZE.rounded;
+    const [w, h] = size.get(n.id);
     const p = pos.get(n.id);
     const cx = originX + p.x;
     const cy = originY + p.y;
@@ -248,6 +280,101 @@ export async function createDiagram({ title, nodes, edges, folder, tags }) {
   const name = await uniqueName(title || "diagram");
   await writeDoc(name, doc);
   return { name, title: doc.title, nodeCount: nodeRecs.length, edgeCount: edgeRecs.length };
+}
+
+/** Relabel / reshape one node by id (auto-refits its box, keeping its center). */
+export async function updateNode({ name, id, label, shape }) {
+  const doc = await readDoc(name);
+  const n = (doc.nodes ?? []).find((x) => x.id === id);
+  if (!n) throw new Error(`No node "${id}" in ${name}.`);
+  if (shape != null) n.shape = shapeOf(shape);
+  if (label != null) n.text = String(label).slice(0, 200);
+  const [w, h] = fitSize(n.shape, n.text);
+  const cx = n.x + n.w / 2;
+  const cy = n.y + n.h / 2;
+  n.w = w;
+  n.h = h;
+  n.x = Math.round(cx - w / 2);
+  n.y = Math.round(cy - h / 2);
+  await writeDoc(name, doc);
+  return { name, id, label: n.text, shape: n.shape };
+}
+
+/** Delete a node and any connectors touching it. */
+export async function deleteNode({ name, id }) {
+  const doc = await readDoc(name);
+  const before = (doc.nodes ?? []).length;
+  doc.nodes = (doc.nodes ?? []).filter((n) => n.id !== id);
+  if (doc.nodes.length === before) throw new Error(`No node "${id}" in ${name}.`);
+  const e0 = (doc.edges ?? []).length;
+  doc.edges = (doc.edges ?? []).filter((e) => e.source !== id && e.target !== id);
+  await writeDoc(name, doc);
+  return { name, removedNode: id, removedEdges: e0 - doc.edges.length };
+}
+
+/** Set (or clear, with null/"") a node's fill color. */
+export async function setNodeColor({ name, id, color }) {
+  const doc = await readDoc(name);
+  const n = (doc.nodes ?? []).find((x) => x.id === id);
+  if (!n) throw new Error(`No node "${id}" in ${name}.`);
+  n.style = n.style ?? {};
+  if (color) n.style.fill = String(color);
+  else delete n.style.fill;
+  await writeDoc(name, doc);
+  return { name, id, fill: n.style.fill ?? "default" };
+}
+
+/** Connect two existing nodes by id. */
+export async function addEdge({ name, from, to, label }) {
+  const doc = await readDoc(name);
+  const ids = new Set((doc.nodes ?? []).map((n) => n.id));
+  if (!ids.has(from) || !ids.has(to)) throw new Error(`Both "${from}" and "${to}" must exist.`);
+  const edge = {
+    id: rand(),
+    source: from,
+    target: to,
+    kind: "flow",
+    routing: "curved",
+    label: label ? String(label).slice(0, 80) : "",
+    style: {},
+    arrowStart: false,
+    arrowEnd: true,
+  };
+  doc.edges = doc.edges ?? [];
+  doc.edges.push(edge);
+  await writeDoc(name, doc);
+  return { name, edge: edge.id, from, to };
+}
+
+/**
+ * Inspect a diagram: geometry per node plus computed problems (overlapping
+ * boxes). Lets an agent self-correct layout the way a screenshot would, but
+ * headless — the app already auto-fits text, so overflow is handled there.
+ */
+export async function describeDiagram(name) {
+  const doc = await readDoc(name);
+  const nodes = (doc.nodes ?? []).filter((n) => n.shape !== "draw");
+  const boxes = nodes.map((n) => ({ id: n.id, label: n.text, shape: n.shape, x: n.x, y: n.y, w: n.w, h: n.h }));
+  const overlaps = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.shape === "frame" || b.shape === "frame") continue;
+      const ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+      const oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      if (ox > 4 && oy > 4) overlaps.push({ a: a.id, b: b.id, overlapPx: Math.round(ox * oy) });
+    }
+  }
+  return {
+    name,
+    title: doc.title,
+    nodeCount: boxes.length,
+    edgeCount: (doc.edges ?? []).length,
+    nodes: boxes,
+    overlaps,
+    ok: overlaps.length === 0,
+  };
 }
 
 export async function appendToDiagram({ name, nodes, edges }) {
