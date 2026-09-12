@@ -2,13 +2,21 @@
 
 **Anvaya** — a Sanskrit word meaning connection, relation, sequence, and logical continuity — is a premium, local-first **visual thinking** application that unifies **mind maps** and **flowcharts** on a single infinite canvas.
 
-Every innovation begins with disconnected thoughts. Anvaya turns them into structured knowledge through mind maps, flowcharts, and (soon) AI-powered thinking.
+Every innovation begins with disconnected thoughts. Anvaya turns them into structured knowledge through mind maps, flowcharts, and AI-powered diagramming.
 
 > **Status:** working MVP of the core loop — unified canvas, CRDT document, auto-save. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full product & technical design and roadmap.
 
 ---
 
 ## Run it
+
+### Prerequisites
+
+- **Node.js 18 or newer** (+ npm) — for the app build and the MCP server. macOS: `brew install node`.
+- **Rust toolchain** — only needed to build the native desktop app (Tauri). One-time: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`.
+- **make** — thin wrappers over `npm` / `npx tauri`.
+
+Run `make doctor` to check what's installed.
 
 Everything is wrapped in a **Makefile** — run `make` (or `make help`) to see all targets:
 
@@ -77,6 +85,8 @@ npm run typecheck  # types only
 - **Local-first auto-save** — every change persists to IndexedDB (crash recovery); survives reload.
 - **Undo / redo** — via the CRDT history (**⌘Z** / **⇧⌘Z**).
 - **Portable file format** — export/import a normalized, git-diff-friendly `.anvaya` JSON.
+- **AI diagram generation** — describe a diagram (or paste **Mermaid**) and get native, editable shapes; bring-your-own-key (any OpenAI-compatible endpoint or Anthropic). Plus an **MCP server** so coding agents build diagrams in your workspace — see [Connect an AI agent (MCP)](#connect-an-ai-agent-mcp).
+- **Excalidraw interop** — import and export `.excalidraw` files from the Export menu.
 
 ### Keyboard
 
@@ -97,6 +107,66 @@ npm run typecheck  # types only
 | `⌘`+scroll | Zoom · scroll/trackpad · pan |
 
 ---
+
+## Make diagrams with AI
+
+Two ways to turn ideas into diagrams:
+
+- **In the app** — click **✨ AI** in the toolbar, describe a diagram (or paste **Mermaid** flowchart text), and Anvaya builds real, editable shapes. Bring your own key; works with any OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, Ollama, LM Studio) or Anthropic. Pasted Mermaid needs no key.
+- **From your coding tools** — connect an MCP server so agents like **Claude Code**, **Claude Desktop**, or **Cursor** build diagrams directly in your workspace (see below).
+
+## Connect an AI agent (MCP)
+
+The MCP server lets any MCP-capable AI tool create and edit diagrams in an Anvaya
+workspace. It reads and writes `.anvaya` files on disk, so it works whether or not
+the app is running; the app picks up changes automatically (or via **Reload from disk**).
+
+### Prerequisite
+
+Just **Node.js 18+**. The server ships as a **self-contained bundle**
+(`mcp/anvaya-mcp.bundle.mjs`) with all dependencies inlined — **no `npm install`**.
+
+> The bundle matters: a GitHub "Download ZIP" has no `node_modules`, so pointing a
+> client at `mcp/server.mjs` fails with *"Cannot find package
+> '@modelcontextprotocol/sdk'"*. Use the bundle path and it just works.
+
+### Claude Code
+
+```bash
+claude mcp add anvaya -s user \
+  -e ANVAYA_WORKSPACE="$HOME/Documents/Anvaya" \
+  -- "$(which node)" /ABSOLUTE/PATH/TO/anvaya/mcp/anvaya-mcp.bundle.mjs
+```
+
+Then restart Claude Code (or `/mcp` → reconnect) and ask, e.g. *"Use anvaya to
+create a diagram of a login flow with 2FA."* Check status with `claude mcp list`.
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "anvaya": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/ABSOLUTE/PATH/TO/anvaya/mcp/anvaya-mcp.bundle.mjs"],
+      "env": { "ANVAYA_WORKSPACE": "/Users/you/Documents/Anvaya" }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. Use the **absolute** path to `node` — these clients run
+with a minimal `PATH` and can't find a bare `node`.
+
+### Notes
+
+- Point `ANVAYA_WORKSPACE` at the folder you opened in Anvaya (default `~/Documents/Anvaya`).
+- Tools: `list_diagrams`, `read_diagram`, `create_diagram`, `create_from_mermaid`,
+  `append_to_diagram`, `update_node`, `delete_node`, `add_edge`, `set_node_color`, `describe_diagram`.
+- Developing the server? `cd mcp && npm install`, edit `server.mjs`, then
+  `npm run bundle` to rebuild. Full details in [`mcp/README.md`](mcp/README.md).
 
 ## Architecture at a glance
 
