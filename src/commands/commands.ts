@@ -7,6 +7,7 @@ import type {
   SceneNode,
 } from "@/document/types";
 import { shapeDefaults } from "@/document/theme";
+import { fitBox, fitsToText } from "@/document/textfit";
 import { layoutMindmapRight } from "@/layout/mindmap";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,13 +36,18 @@ export class Commands {
   }): SceneNode {
     const shape = opts.shape ?? "rounded";
     const def = shapeDefaults[shape];
+    // Size the box to the initial text so labels never overflow (falls back to
+    // the shape's default size when created empty).
+    const fit = opts.text && opts.text.trim() ? fitBox(shape, def.style, opts.text) : null;
+    const w = fit?.w ?? def.w;
+    const h = fit?.h ?? def.h;
     const node: SceneNode = {
       id: nanoid(10),
       shape,
-      x: Math.round(opts.x - def.w / 2),
-      y: Math.round(opts.y - def.h / 2),
-      w: def.w,
-      h: def.h,
+      x: Math.round(opts.x - w / 2),
+      y: Math.round(opts.y - h / 2),
+      w,
+      h,
       text: opts.text ?? "",
       parentId: opts.parentId ?? null,
       layoutId: opts.layoutId ?? null,
@@ -134,7 +140,22 @@ export class Commands {
   }
 
   setText(id: string, text: string) {
-    this.doc.updateNode(id, { text });
+    const n = this.doc.getNode(id);
+    // Grow/shrink the box to fit the edited text, keeping it centered in place.
+    const fit = n && fitsToText(n.shape) ? fitBox(n.shape, n.style, text) : null;
+    if (n && fit) {
+      const cx = n.x + n.w / 2;
+      const cy = n.y + n.h / 2;
+      this.doc.updateNode(id, {
+        text,
+        w: fit.w,
+        h: fit.h,
+        x: Math.round(cx - fit.w / 2),
+        y: Math.round(cy - fit.h / 2),
+      });
+    } else {
+      this.doc.updateNode(id, { text });
+    }
     this.reflowOwningLayout(id);
   }
 

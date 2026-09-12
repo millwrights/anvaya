@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/app/store";
 import { AI_PRESETS, aiConfigured, loadAiConfig, saveAiConfig, type AiConfig } from "@/ai/config";
-import { generateDiagram } from "@/ai/diagram";
+import { buildFromMermaid, generateDiagram } from "@/ai/diagram";
+import { looksLikeMermaid } from "@/ai/mermaid";
 
 const EXAMPLES = [
   "User login flow with 2FA and error handling",
@@ -44,9 +45,26 @@ export function AiPanel() {
 
   const run = async () => {
     if (!engine || !prompt.trim() || busy) return;
+    // Pasted Mermaid → build locally, no model or key needed.
+    if (looksLikeMermaid(prompt)) {
+      setBusy(true);
+      setError(null);
+      setStatus("Importing Mermaid…");
+      try {
+        const r = buildFromMermaid(engine, prompt);
+        setStatus(`Built “${r.title ?? "diagram"}” — ${r.nodeCount} shapes, ${r.edgeCount} links.`);
+        setPrompt("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setStatus(null);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!configured) {
       setShowSettings(true);
-      setError("Add your model settings first.");
+      setError("Add your model settings first — or paste Mermaid to build without a model.");
       return;
     }
     setBusy(true);
@@ -77,7 +95,7 @@ export function AiPanel() {
         <textarea
           ref={promptRef}
           className="ai-prompt"
-          placeholder="Describe a diagram to create…"
+          placeholder="Describe a diagram — or paste Mermaid flowchart text…"
           value={prompt}
           rows={3}
           onChange={(e) => setPrompt(e.target.value)}
