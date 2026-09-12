@@ -8,7 +8,8 @@
     "anvaya-mcp": "server.mjs"
   },
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "bundle": "npx --yes esbuild server.mjs --bundle --platform=node --format=esm --outfile=anvaya-mcp.bundle.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

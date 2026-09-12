@@ -19,10 +19,13 @@ Node shapes: `rounded` (step), `diamond` (decision), `ellipse` (start/end),
 
 ## Install
 
-```sh
-cd mcp
-npm install
-```
+**No install needed** — this folder ships a self-contained bundle,
+`anvaya-mcp.bundle.mjs`, with all dependencies inlined. Just point your MCP
+client at it (see below). You only need Node.js on your machine.
+
+> Running from source instead (for development)? Then `cd mcp && npm install`
+> first and use `server.mjs` in place of the bundle path. Rebuild the bundle
+> after changing the server with `npm run bundle`.
 
 ## Point it at your workspace
 
@@ -39,12 +42,15 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
   "mcpServers": {
     "anvaya": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/anvaya/mcp/server.mjs"],
+      "args": ["/ABSOLUTE/PATH/TO/anvaya/mcp/anvaya-mcp.bundle.mjs"],
       "env": { "ANVAYA_WORKSPACE": "/Users/you/Documents/Anvaya" }
     }
   }
 }
 ```
+
+Use the absolute path to `node` (e.g. `/opt/homebrew/bin/node`) if your client
+runs with a minimal PATH — Claude Desktop does.
 
 Restart Claude Desktop. You can then ask, e.g.:
 
@@ -59,4 +65,5 @@ You can also force a refresh with **Reload from disk** in the workspace menu.
 
 - Works whether or not Anvaya is running — it just writes files.
 - Quit-safe: the app never overwrites an external change made while you were idle.
-- Other MCP clients: run `node server.mjs` over stdio with `ANVAYA_WORKSPACE` set.
+- Other MCP clients: run `node anvaya-mcp.bundle.mjs` over stdio with `ANVAYA_WORKSPACE` set.
+- Claude Code: `claude mcp add anvaya -s user -e ANVAYA_WORKSPACE=/Users/you/Documents/Anvaya -- /opt/homebrew/bin/node /ABSOLUTE/PATH/TO/anvaya/mcp/anvaya-mcp.bundle.mjs`
