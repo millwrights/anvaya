@@ -614,7 +614,7 @@ export class CanvasEngine {
     if (!pts) return "";
     const color = e.style.stroke ?? hex(e.kind === "flow" ? theme.edgeFlow : theme.edge);
     const width = e.style.width ?? 2;
-    const poly = this.routedPolyline(pts, e.routing ?? "curved");
+    const poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
@@ -959,8 +959,29 @@ export class CanvasEngine {
     return [from, ...wps.map((w) => ({ x: w.x, y: w.y })), to];
   }
 
-  /** The drawn connector path as a dense polyline, honoring its routing style. */
-  private routedPolyline(pts: Point[], routing: EdgeRouting): Point[] {
+  /** Outward normals at each attached end (endpoint minus node center), so a
+   *  curved connector leaves/enters perpendicular to the shape. */
+  private endpointDirs(e: SceneEdge, pts: Point[], byId: Map<string, SceneNode>) {
+    const a = e.source ? byId.get(e.source) : undefined;
+    const b = e.target ? byId.get(e.target) : undefined;
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    const ca = a ? center(a) : undefined;
+    const cb = b ? center(b) : undefined;
+    return {
+      from: ca ? unit(first.x - ca.x, first.y - ca.y) : null,
+      to: cb ? unit(last.x - cb.x, last.y - cb.y) : null,
+    };
+  }
+
+  /** The drawn connector path as a dense polyline, honoring its routing style.
+   *  `dirs` are the outward normals at each end (so a curve leaves/enters
+   *  perpendicular to the shape and its arrowhead points into the box). */
+  private routedPolyline(
+    pts: Point[],
+    routing: EdgeRouting,
+    dirs?: { from: Point | null; to: Point | null },
+  ): Point[] {
     if (routing === "straight") return pts;
     if (routing === "step") {
       const out: Point[] = [pts[0]];
@@ -981,8 +1002,15 @@ export class CanvasEngine {
       const dy = to.y - from.y;
       const horiz = Math.abs(dx) >= Math.abs(dy);
       const k = 0.5;
-      const c1 = horiz ? { x: from.x + dx * k, y: from.y } : { x: from.x, y: from.y + dy * k };
-      const c2 = horiz ? { x: to.x - dx * k, y: to.y } : { x: to.x, y: to.y - dy * k };
+      const d = Math.hypot(dx, dy) || 1;
+      // Prefer the shape's outward normal so the curve leaves/enters
+      // perpendicular to the edge; fall back to the dominant-axis heuristic.
+      const c1 = dirs?.from
+        ? { x: from.x + dirs.from.x * d * 0.42, y: from.y + dirs.from.y * d * 0.42 }
+        : horiz ? { x: from.x + dx * k, y: from.y } : { x: from.x, y: from.y + dy * k };
+      const c2 = dirs?.to
+        ? { x: to.x + dirs.to.x * d * 0.42, y: to.y + dirs.to.y * d * 0.42 }
+        : horiz ? { x: to.x - dx * k, y: to.y } : { x: to.x, y: to.y - dy * k };
       const n = this.curveSteps(from, c1, c2, to);
       const out: Point[] = [from];
       for (let i = 1; i <= n; i++) out.push(bezierPoint(from, c1, c2, to, i / n));
@@ -1059,7 +1087,7 @@ export class CanvasEngine {
     if (!pts) return;
     const color = e.style.stroke ?? (e.kind === "flow" ? theme.edgeFlow : theme.edge);
     const width = e.style.width ?? 2;
-    const poly = this.routedPolyline(pts, e.routing ?? "curved");
+    const poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
@@ -2067,6 +2095,12 @@ function borderPoint(n: SceneNode, toward: Point): Point {
     scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh); // rectangle
   }
   return { x: c.x + dx * scale, y: c.y + dy * scale };
+}
+
+/** Unit vector, or null for a zero-length input. */
+function unit(dx: number, dy: number): Point | null {
+  const m = Math.hypot(dx, dy);
+  return m < 1e-6 ? null : { x: dx / m, y: dy / m };
 }
 
 /** Catmull-Rom → cubic-bezier segments for a smooth curve through all points. */
