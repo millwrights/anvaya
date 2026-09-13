@@ -21662,7 +21662,10 @@ function buildRecords(spec, startZ, originX, originY) {
       arrowEnd: true
     };
     const channel = !back.has(EK(e.from, e.to)) && dt === ds + 1;
-    if (!channel) {
+    if (channel) {
+      edge.sourceAnchor = { fx: 0.5, fy: 1 };
+      edge.targetAnchor = { fx: 0.5, fy: 0 };
+    } else {
       const laneX = Math.round(gutterBase + gutterLane++ * 46);
       const fy = Math.round(originY + pos.get(e.from).y);
       const ty = Math.round(originY + pos.get(e.to).y);

@@ -2055,7 +2055,17 @@ function borderPoint(n: SceneNode, toward: Point): Point {
   if (dx === 0 && dy === 0) return c;
   const hw = n.w / 2;
   const hh = n.h / 2;
-  const scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+  // Intersect the ray from the center with the node's ACTUAL outline, so arrows
+  // touch the shape cleanly instead of stopping at the bounding box (which for a
+  // diamond/ellipse leaves a gap where the corner sticks out past the shape).
+  let scale: number;
+  if (n.shape === "diamond") {
+    scale = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh); // rhombus |x|/hw+|y|/hh=1
+  } else if (n.shape === "ellipse") {
+    scale = 1 / Math.hypot(dx / hw, dy / hh); // ellipse (x/hw)^2+(y/hh)^2=1
+  } else {
+    scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh); // rectangle
+  }
   return { x: c.x + dx * scale, y: c.y + dy * scale };
 }
 

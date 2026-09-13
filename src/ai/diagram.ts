@@ -137,11 +137,12 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
       const ds = depth.get(e.from) ?? 0;
       const dt = depth.get(e.to) ?? 0;
       const channel = !back.has(edgeKey(e.from, e.to)) && dt === ds + 1;
-      // Adjacent forward edges route cleanly in the vertical channel; back-edges
-      // and layer-skipping edges detour through a staggered side gutter so no
-      // connector is hidden under, or drawn across, another box.
+      // Adjacent forward edges leave the source's bottom-center and enter the
+      // target's top-center (clean vertical flow; these points are the vertices
+      // on a diamond too). Back-edges and layer-skipping edges detour through a
+      // staggered side gutter, entering/leaving at the right-center.
       const ends = channel
-        ? undefined
+        ? { sourceAnchor: { fx: 0.5, fy: 1 }, targetAnchor: { fx: 0.5, fy: 0 } }
         : { sourceAnchor: { fx: 1, fy: 0.5 }, targetAnchor: { fx: 1, fy: 0.5 } };
       const edge = commands.connect(real.get(e.from)!, real.get(e.to)!, "flow", ends);
       const patch: Record<string, unknown> = {};
