@@ -86,11 +86,11 @@ const DARK: Preset = {
   },
   palette: {
     node: { fill: "#191b21", stroke: "#2d303a", textColor: "#f4f5f7", fontSize: 14.5, strokeWidth: 0 },
-    topicFill: "#2b6cff", topicStroke: "#1e50c8",
-    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
-    diamondFill: "#f5920b", diamondStroke: "#c9740a",
-    noteFill: "#f5c400", noteStroke: "#cfa300",
-    stickyFill: "#ffd60a", stickyStroke: "#d9b400", stickyText: "#1a1a1a",
+    topicFill: "#2e9bff", topicStroke: "#0060df",
+    ellipseFill: "#34e668", ellipseStroke: "#1f9e3a",
+    diamondFill: "#ffab24", diamondStroke: "#d97e00",
+    noteFill: "#ffe000", noteStroke: "#d9b400",
+    stickyFill: "#ffe000", stickyStroke: "#d9b400", stickyText: "#1a1a1a",
     frameFill: "#101015", frameStroke: "#2a2a33", frameText: "#8a90a0",
     imageStroke: "#2d303a", drawStroke: "#f4f5f7",
   },
@@ -123,11 +123,11 @@ const MIDNIGHT: Preset = {
   },
   palette: {
     node: { fill: "#1c2230", stroke: "#33405c", textColor: "#e8eaed", fontSize: 15, strokeWidth: 0 },
-    topicFill: "#2b6cff", topicStroke: "#1e50c8",
-    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
-    diamondFill: "#f5920b", diamondStroke: "#c9740a",
-    noteFill: "#f5c400", noteStroke: "#cfa300",
-    stickyFill: "#ffd60a", stickyStroke: "#d9b400", stickyText: "#20242c",
+    topicFill: "#2e9bff", topicStroke: "#0060df",
+    ellipseFill: "#34e668", ellipseStroke: "#1f9e3a",
+    diamondFill: "#ffab24", diamondStroke: "#d97e00",
+    noteFill: "#ffe000", noteStroke: "#d9b400",
+    stickyFill: "#ffe000", stickyStroke: "#d9b400", stickyText: "#20242c",
     frameFill: "#141a24", frameStroke: "#2c3648", frameText: "#8b93a3",
     imageStroke: "#33405c", drawStroke: "#e8eaed",
   },
@@ -160,11 +160,11 @@ const LIGHT: Preset = {
   },
   palette: {
     node: { fill: "#ffffff", stroke: "#dfe3e9", textColor: "#1a1d23", fontSize: 14.5, strokeWidth: 0 },
-    topicFill: "#2b6cff", topicStroke: "#1e50c8",
-    ellipseFill: "#16a34a", ellipseStroke: "#0f7d38",
-    diamondFill: "#f5920b", diamondStroke: "#c9740a",
-    noteFill: "#f5c400", noteStroke: "#cfa300",
-    stickyFill: "#ffd60a", stickyStroke: "#e6c000", stickyText: "#20242c",
+    topicFill: "#2e9bff", topicStroke: "#0060df",
+    ellipseFill: "#34e668", ellipseStroke: "#1f9e3a",
+    diamondFill: "#ffab24", diamondStroke: "#d97e00",
+    noteFill: "#ffe000", noteStroke: "#d9b400",
+    stickyFill: "#ffe000", stickyStroke: "#e6c000", stickyText: "#20242c",
     frameFill: "#eef1f5", frameStroke: "#dbe0e7", frameText: "#7c8493",
     imageStroke: "#dfe3e9", drawStroke: "#1a1d23",
   },
@@ -270,7 +270,7 @@ function contrast(a: string, b: string): number {
  */
 export function readableText(preferred: string, fill?: string): string {
   if (!fill || alphaOf(fill) < 0.15) return preferred;
-  if (contrast(preferred, fill) >= 3.2) return preferred;
+  if (contrast(preferred, fill) >= 2.9) return preferred;
   // Flip to whichever of near-black / near-white reads best on this fill.
   return contrast("#15171c", fill) >= contrast("#f6f7f9", fill) ? "#15171c" : "#f6f7f9";
 }

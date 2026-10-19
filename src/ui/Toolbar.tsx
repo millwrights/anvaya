@@ -11,6 +11,8 @@ import type { Tool } from "@/canvas/CanvasEngine";
 const TOOLS: { id: Tool; glyph: string; label: string; key: string }[] = [
   { id: "select", glyph: "⬉", label: "Select", key: "V" },
   { id: "pen", glyph: "✎", label: "Pen (draw)", key: "P" },
+  { id: "laser", glyph: "🔦", label: "Laser pointer (trail fades)", key: "L" },
+  { id: "eraser", glyph: "🧽", label: "Eraser", key: "E" },
   { id: "rect", glyph: "▭", label: "Box", key: "R" },
   { id: "ellipse", glyph: "◯", label: "Circle / oval", key: "O" },
   { id: "diamond", glyph: "◇", label: "Diamond", key: "D" },

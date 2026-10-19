@@ -20,6 +20,8 @@ export type Tool =
   | "select"
   | "connect"
   | "pen"
+  | "laser"
+  | "eraser"
   | "rect"
   | "ellipse"
   | "diamond"
@@ -28,10 +30,14 @@ export type Tool =
   | "text";
 
 const SHAPE_TOOLS: Tool[] = ["rect", "ellipse", "diamond", "sticky", "frame", "text"];
-export const INK_COLORS = ["#e8ebf0", "#2b6cff", "#16a34a", "#f5c400", "#f0392b", "#8b45ff"];
+export const INK_COLORS = ["#ffffff", "#2e9bff", "#5ce0ff", "#34e668", "#ffe000", "#ffab24", "#ff5a4a", "#cf74ff"];
 export const INK_WIDTHS = [2, 3.5, 6];
 const DEFAULT_INK_COLOR = INK_COLORS[0];
 const DEFAULT_INK_WIDTH = INK_WIDTHS[0];
+// Laser pointer: a bright trail that stays while the button is held, then fades
+// out after release — nothing is saved to the doc.
+const LASER_COLOR = 0xff2d2d;
+const LASER_FADE_MS = 700; // fade-out duration after the pointer is released
 
 function toolShape(t: Tool): SceneNode["shape"] {
   return t === "text"
@@ -69,6 +75,10 @@ export class CanvasEngine {
   tool: Tool = "select";
   private inkColor = DEFAULT_INK_COLOR;
   private inkWidth = DEFAULT_INK_WIDTH;
+  private laserGfx = new Graphics();
+  private laserPts: { x: number; y: number }[] = [];
+  private laserActive = false;
+  private laserReleaseT: number | null = null; // when the pointer lifted (starts the fade)
 
   private app!: Application;
   private world = new Container();
@@ -127,6 +137,8 @@ export class CanvasEngine {
     // track the camera automatically.
     this.world.addChild(this.gridLayer, this.contentLayer, this.previewGfx);
     this.app.stage.addChild(this.world, this.overlayLayer);
+    this.laserGfx.eventMode = "none";
+    this.app.stage.addChild(this.laserGfx); // screen-space, above everything
 
     this.bindInput();
     this.unsubTheme = onThemeChange(() => this.refreshTheme());
@@ -305,8 +317,10 @@ export class CanvasEngine {
   setTool(t: Tool) {
     this.tool = t;
     if (this.app) {
-      const drawing = t === "pen" || t === "connect" || SHAPE_TOOLS.includes(t);
+      const drawing =
+        t === "pen" || t === "laser" || t === "connect" || t === "eraser" || SHAPE_TOOLS.includes(t);
       this.app.canvas.style.cursor = drawing ? "crosshair" : "default";
+      this.clearPreview(); // drop any transient preview (e.g. the eraser ring)
     }
     this.emit();
   }
@@ -371,7 +385,39 @@ export class CanvasEngine {
       this.renderScene();
       this.sceneDirty = false;
     }
+    if (this.laserPts.length) this.drawLaser(); // animate the fading laser trail
   };
+
+  /** A glowing red laser trail (screen space). It stays at full strength while
+   *  the pointer is held, then the whole trail fades out after release. */
+  private drawLaser() {
+    const g = this.laserGfx;
+    g.clear();
+    const pts = this.laserPts;
+    if (pts.length < 2) {
+      if (!this.laserActive) this.laserPts = [];
+      return;
+    }
+    let a = 1;
+    if (!this.laserActive && this.laserReleaseT != null) {
+      a = 1 - (performance.now() - this.laserReleaseT) / LASER_FADE_MS;
+      if (a <= 0) {
+        this.laserPts = [];
+        return;
+      }
+    }
+    const path = () => {
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+    };
+    path();
+    g.stroke({ color: LASER_COLOR, width: 11, alpha: a * 0.28, cap: "round", join: "round" }); // halo
+    path();
+    g.stroke({ color: 0xffffff, width: 3, alpha: a * 0.95, cap: "round", join: "round" }); // bright core
+    const tip = pts[pts.length - 1];
+    g.circle(tip.x, tip.y, 10).fill({ color: LASER_COLOR, alpha: a * 0.4 });
+    g.circle(tip.x, tip.y, 3.5).fill({ color: 0xffffff, alpha: a * 0.98 });
+  }
 
   // ── camera / grid ─────────────────────────────────────────────────────────
   private applyCamera() {
@@ -1296,6 +1342,43 @@ export class CanvasEngine {
     }
   }
 
+  // ── eraser ──────────────────────────────────────────────────────────────────
+  /** Delete any stroke / shape / connector the eraser passes over (object eraser). */
+  private eraseAt(world: Point) {
+    const r = 16 / this.camera.zoom;
+    const kill: string[] = [];
+    for (const n of this.doc.allNodes()) {
+      if (n.locked) continue;
+      if (n.shape === "draw") {
+        if (strokeNear(n, world, r)) kill.push(n.id);
+      } else if (n.shape !== "frame") {
+        // brush over a shape (incl. a stray box) to remove it
+        if (world.x >= n.x && world.x <= n.x + n.w && world.y >= n.y && world.y <= n.y + n.h)
+          kill.push(n.id);
+      }
+    }
+    if (kill.length) {
+      const dead = new Set(kill);
+      this.cmd.deleteNodes(kill);
+      this.setSelection(this.getSelection().filter((id) => !dead.has(id)));
+    }
+    const eid = this.hitEdge(world);
+    if (eid) {
+      this.cmd.deleteEdge(eid);
+      if (this.edgeSel === eid) this.setEdgeSelection(null);
+    }
+  }
+
+  /** A soft ring showing the eraser's reach (lives in the preview layer). */
+  private drawEraserCursor(world: Point) {
+    const g = this.previewGfx;
+    g.clear();
+    const z = this.camera.zoom;
+    g.circle(world.x, world.y, 16 / z)
+      .fill({ color: 0xffffff, alpha: 0.08 })
+      .stroke({ color: 0xff5a4a, width: 1.5 / z, alpha: 0.9 });
+  }
+
   private previewLink(from: Point, to: Point) {
     const g = this.previewGfx;
     g.clear();
@@ -1430,6 +1513,8 @@ export class CanvasEngine {
       | "resize"
       | "create"
       | "draw"
+      | "laser"
+      | "erase"
       | "wp"
       | "link"
       | "marquee" = "idle";
@@ -1499,6 +1584,19 @@ export class CanvasEngine {
         mode = "draw";
         strokePts = [world.x, world.y];
         this.previewStroke(strokePts);
+        return;
+      }
+      if (this.tool === "laser") {
+        mode = "laser";
+        this.laserActive = true;
+        this.laserReleaseT = null;
+        this.laserPts = [{ x: p.x, y: p.y }]; // screen space
+        return;
+      }
+      if (this.tool === "eraser") {
+        mode = "erase";
+        this.eraseAt(world);
+        this.drawEraserCursor(world);
         return;
       }
       if (SHAPE_TOOLS.includes(this.tool)) {
@@ -1662,6 +1760,20 @@ export class CanvasEngine {
           strokePts.push(w.x, w.y);
         }
         this.previewStroke(strokePts);
+      } else if (mode === "laser") {
+        const samples = e.getCoalescedEvents?.() ?? [];
+        for (const ev of samples.length ? samples : [e]) {
+          const lp = localXY(ev);
+          this.laserPts.push({ x: lp.x, y: lp.y });
+        }
+      } else if (mode === "erase") {
+        // Erase along the whole swept path (coalesced samples catch fast drags).
+        const samples = e.getCoalescedEvents?.() ?? [];
+        for (const ev of samples.length ? samples : [e]) {
+          const lp = localXY(ev);
+          this.eraseAt(this.camera.screenToWorld(lp.x, lp.y));
+        }
+        this.drawEraserCursor(world);
       } else if (mode === "wp") {
         dragWaypoint(world);
       } else if (mode === "link") {
@@ -1681,6 +1793,8 @@ export class CanvasEngine {
         this.hoverWorld = world;
         if (this.hoveredId) this.markScene(); // refresh the live connect anchor
         el.style.cursor = this.hitConnectZone(world) ? "crosshair" : "default";
+      } else if (mode === "idle" && this.tool === "eraser") {
+        this.drawEraserCursor(world); // ring follows the pointer
       }
       last = p;
     });
@@ -1700,9 +1814,14 @@ export class CanvasEngine {
         this.commitShape(downWorld, this.camera.screenToWorld(last.x, last.y), dragged);
       } else if (mode === "draw") {
         const stroke = this.cmd.createStroke(strokePts, this.inkColor, this.inkWidth);
-        if (stroke) this.setSelection([]); // stay in pen tool, ready for the next stroke
+        if (stroke) this.setSelection([]); // stay in the pen tool, ready for the next stroke
         strokePts = [];
         this.clearPreview();
+      } else if (mode === "laser") {
+        this.laserActive = false;
+        this.laserReleaseT = performance.now(); // now the whole trail fades out
+      } else if (mode === "erase") {
+        this.clearPreview(); // drop the eraser ring
       } else if (mode === "link" && linkSource) {
         const src = linkSource;
         const world = this.camera.screenToWorld(last.x, last.y);
@@ -1772,6 +1891,10 @@ export class CanvasEngine {
     el.addEventListener("pointerup", endDrag);
 
     el.addEventListener("dblclick", (e) => {
+      // Only the Select tool acts on double-click (create / edit). While drawing
+      // (pen, eraser, a shape, or connect), a double-tap must do nothing — no
+      // stray box.
+      if (this.tool !== "select") return;
       const p = localXY(e);
       const world = this.camera.screenToWorld(p.x, p.y);
       // Double-click a waypoint to remove it (endpoints aren't removable).
@@ -1794,6 +1917,7 @@ export class CanvasEngine {
 
     el.addEventListener("pointerleave", () => {
       this.hoverWorld = null;
+      if (mode === "idle") this.clearPreview(); // drop the eraser hover-ring
       if (this.hoveredId) {
         this.hoveredId = null;
         this.markScene();
@@ -1965,6 +2089,34 @@ function quickConnectShape(src?: SceneNode["shape"]): NodeShape {
 }
 
 /** Shortest distance from a point to the node's rectangular border. */
+/** True when point `p` lies within `r` of any segment of a freehand stroke. */
+function strokeNear(n: SceneNode, p: Point, r: number): boolean {
+  const pts = n.points;
+  if (!pts || pts.length < 2) return false;
+  const r2 = r * r;
+  if (pts.length < 4) {
+    const dx = p.x - (n.x + pts[0]);
+    const dy = p.y - (n.y + pts[1]);
+    return dx * dx + dy * dy <= r2;
+  }
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    if (distToSegSq(p.x, p.y, n.x + pts[i], n.y + pts[i + 1], n.x + pts[i + 2], n.y + pts[i + 3]) <= r2)
+      return true;
+  }
+  return false;
+}
+
+function distToSegSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const ex = px - (ax + t * dx);
+  const ey = py - (ay + t * dy);
+  return ex * ex + ey * ey;
+}
+
 function distToPerimeter(n: SceneNode, p: Point): number {
   const left = n.x,
     right = n.x + n.w,

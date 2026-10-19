@@ -16,22 +16,22 @@ const SHAPES: { key: NodeShape; label: string }[] = [
 // Vivid, saturated palettes — full-strength color, not washed-out pastels. Text
 // on fills auto-contrasts (see readableText), so bright fills stay legible.
 const FILLS = [
-  "#3a4150", "#2b6cff", "#16a34a", "#f5c400",
-  "#f5920b", "#f0392b", "#8b45ff", "#ec3a86",
+  "#3a4150", "#2e9bff", "#34e668", "#ffe000",
+  "#ffab24", "#ff5a4a", "#cf74ff", "#ff5178",
 ];
-const STICKY_COLORS = ["#ffd60a", "#ff9f0a", "#ff453a", "#32d74b", "#0a84ff", "#bf5af2", "#ff375f"];
-const BORDER_COLORS = ["#2b6cff", "#16a34a", "#f5c400", "#f5920b", "#f0392b", "#8b45ff", "#ec3a86", "#aeb4bf"];
+const STICKY_COLORS = ["#ffe000", "#ffab24", "#ff5a4a", "#34e668", "#2e9bff", "#cf74ff", "#ff5178"];
+const BORDER_COLORS = ["#2e9bff", "#34e668", "#ffe000", "#ffab24", "#ff5a4a", "#cf74ff", "#ff5178", "#aeb4bf"];
 const BORDER_WIDTHS = [
   { w: 1, l: "Thin" },
   { w: 2, l: "Med" },
   { w: 3.5, l: "Thick" },
 ];
 const EDGE_COLORS = [
-  "#e8ebf0", "#111318", "#2b6cff", "#16a34a", "#f5c400",
-  "#f5920b", "#f0392b", "#8b45ff", "#ec3a86",
+  "#e8ebf0", "#111318", "#2e9bff", "#34e668", "#ffe000",
+  "#ffab24", "#ff5a4a", "#cf74ff", "#ff5178",
 ];
 const WIDTH_LABELS = ["S", "M", "L"];
-const TEXT_COLORS = ["#f6f7f9", "#111318", "#2b6cff", "#16a34a", "#f0392b", "#f5c400", "#8b45ff"];
+const TEXT_COLORS = ["#f6f7f9", "#111318", "#2e9bff", "#34e668", "#ff5a4a", "#ffe000", "#cf74ff"];
 const ARROW_HEADS: { k: NonNullable<SceneEdge["arrowHead"]>; g: string; title: string }[] = [
   { k: "triangle", g: "▶", title: "Filled triangle" },
   { k: "open", g: "❯", title: "Open / sharp" },
@@ -254,6 +254,7 @@ export function Inspector() {
   const single = sel.length === 1 ? doc.getNode(sel[0]) : undefined;
   const strokeNode = single?.shape === "draw" ? single : undefined;
   const penMode = engine.tool === "pen";
+  const widths = INK_WIDTHS;
 
   // Style controls apply to ALL selected (non-freehand) nodes; `ref` shows the
   // currently-active values.
@@ -317,7 +318,7 @@ export function Inspector() {
             <label>Width</label>
           </div>
           <div className="shape-row" style={{ marginBottom: showNodeProps ? 12 : 0 }}>
-            {INK_WIDTHS.map((w, i) => (
+            {widths.map((w, i) => (
               <button
                 key={w}
                 className={`shape-btn ${curWidth === w ? "active" : ""}`}

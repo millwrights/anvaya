@@ -7,6 +7,8 @@ import type { Tool } from "@/canvas/CanvasEngine";
 const TOOL_KEYS: Record<string, Tool> = {
   v: "select",
   p: "pen",
+  l: "laser",
+  e: "eraser",
   r: "rect",
   o: "ellipse",
   d: "diamond",
