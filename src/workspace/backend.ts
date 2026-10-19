@@ -202,6 +202,38 @@ class Workspace {
     notify();
   }
 
+  // ── read-only history preview (view / diff a past version) ──────────────────
+  private previewing = false;
+  isPreviewing() {
+    return this.previewing;
+  }
+  /** Load a document for viewing only — no autosave, no disk watch (so the live
+   *  file is never touched). Used to show an old git version or a diff overlay. */
+  enterPreview(json: AnvayaDocument) {
+    this.stopAutosave();
+    if (this.watch) {
+      clearInterval(this.watch);
+      this.watch = null;
+    }
+    this.previewing = true;
+    this.doc.loadJSON(json);
+    this.doc.undoManager.clear();
+    notify();
+  }
+  /** Leave preview and restore the live on-disk diagram (resumes autosave/watch). */
+  async exitPreview() {
+    if (!this.previewing) return;
+    this.previewing = false;
+    await this.reloadCurrent();
+    this.startWatch();
+  }
+
+  /** Where the current diagram lives on disk, for git operations (folder only). */
+  gitInfo(): { dir: string; file: string } | null {
+    if (this.info.kind !== "folder" || !this.info.path || !this.current) return null;
+    return { dir: `${this.info.path}/diagrams`, file: this.current };
+  }
+
   async createDiagram(title: string): Promise<string> {
     await this.flushNow();
     this.stopAutosave();
@@ -343,6 +375,20 @@ export function openDiagram(name: string): Promise<void> {
 /** Re-read the current workspace from disk (e.g. to pick up a `git pull`). */
 export function reloadFromDisk(): Promise<void> {
   return active ? active.reloadCurrent() : Promise.resolve();
+}
+/** Where the current diagram lives on disk (for git history), or null. */
+export function currentDiagramGit(): { dir: string; file: string } | null {
+  return active?.gitInfo() ?? null;
+}
+/** Load a document for viewing only (history / diff); never saved to disk. */
+export function previewVersion(json: AnvayaDocument): void {
+  active?.enterPreview(json);
+}
+export function exitPreview(): Promise<void> {
+  return active ? active.exitPreview() : Promise.resolve();
+}
+export function isPreviewing(): boolean {
+  return active?.isPreviewing() ?? false;
 }
 export async function createDiagram(title: string): Promise<void> {
   await active?.createDiagram(title);

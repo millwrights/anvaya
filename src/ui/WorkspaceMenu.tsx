@@ -13,6 +13,7 @@ import { isTauri, pickWorkspaceFolder } from "@/workspace/tauri";
 // choosing / switching the on-disk workspace folder (desktop) and jumping to
 // recent workspaces. In the browser build it just reports the local store.
 export function WorkspaceMenu() {
+  const setHistoryOpen = useApp((s) => s.setHistoryOpen);
   const [open, setOpen] = useState(false);
   const [, bump] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -84,6 +85,19 @@ export function WorkspaceMenu() {
             >
               ↻ Reload from disk
             </button>
+
+            {isTauri && (
+              <button
+                className="ws-item"
+                onClick={() => {
+                  setHistoryOpen(true);
+                  setOpen(false);
+                }}
+                title="Browse git commit history of this diagram; view or compare versions"
+              >
+                🕑 Version history…
+              </button>
+            )}
 
             {isTauri ? (
               <>

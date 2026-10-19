@@ -10,6 +10,11 @@ interface AppStore {
   toggleSidebar: () => void;
   aiOpen: boolean;
   setAiOpen: (v: boolean) => void;
+  historyOpen: boolean;
+  setHistoryOpen: (v: boolean) => void;
+  // Set while viewing a past version / diff (read-only); null = live editing.
+  preview: { label: string; legend?: { color: string; text: string }[] } | null;
+  setPreview: (v: AppStore["preview"]) => void;
 }
 
 export const useApp = create<AppStore>((set) => ({
@@ -21,4 +26,8 @@ export const useApp = create<AppStore>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   aiOpen: false,
   setAiOpen: (aiOpen) => set({ aiOpen }),
+  historyOpen: false,
+  setHistoryOpen: (historyOpen) => set({ historyOpen }),
+  preview: null,
+  setPreview: (preview) => set({ preview }),
 }));

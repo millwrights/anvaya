@@ -25,6 +25,8 @@ import { Minimap } from "./Minimap";
 import { CommandPalette } from "./CommandPalette";
 import { StatusBar } from "./StatusBar";
 import { AiPanel } from "./AiPanel";
+import { HistoryPanel } from "./HistoryPanel";
+import { PreviewBanner } from "./PreviewBanner";
 
 function isTyping(): boolean {
   const el = document.activeElement;
@@ -193,6 +195,8 @@ export function App() {
       <StatusBar />
       <CommandPalette />
       <AiPanel />
+      <HistoryPanel />
+      <PreviewBanner />
     </div>
   );
 }

@@ -773,6 +773,170 @@ kbd {
   color: var(--text-dim);
 }
 
+/* Version history panel */
+.hist-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+}
+.hist-panel {
+  width: min(560px, 92vw);
+  max-height: 72vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+.hist-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 16px 4px;
+}
+.hist-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.hist-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 2px 6px;
+}
+.hist-row.on {
+  background: var(--accent-soft);
+}
+.hist-row input {
+  accent-color: var(--accent);
+}
+.hist-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 7px 6px;
+  border-radius: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hist-main:hover {
+  background: var(--panel-2);
+}
+.hist-subject {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.hist-meta code {
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+}
+.hist-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.hist-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-right: auto;
+}
+
+/* Read-only preview / diff banner across the top of the canvas */
+.preview-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px 7px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+}
+.pv-label {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pv-legend {
+  display: flex;
+  gap: 8px;
+}
+.pv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+.pv-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.pv-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.pv-ro {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.pv-exit {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.pv-exit:hover {
+  border-color: var(--accent);
+}
+
 /* Floating contextual toolbar (above the selection) */
 .floatbar {
   position: absolute;

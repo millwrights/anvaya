@@ -112,6 +112,64 @@ async fn ai_complete(
     .map_err(|e| e.to_string())?
 }
 
+#[derive(serde::Serialize)]
+struct GitCommit {
+    hash: String,
+    short: String,
+    author: String,
+    date: String,
+    subject: String,
+}
+
+/// Commit history for one diagram file (newest first). `dir` is the folder that
+/// holds the file; `file` is its name. Empty when the folder isn't a git repo,
+/// git isn't installed, or the file has no history — the UI handles that.
+#[tauri::command]
+fn git_log(dir: String, file: String) -> Result<Vec<GitCommit>, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C").arg(&dir)
+        .args(["log", "--follow", "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s", "--"])
+        .arg(&file)
+        .output();
+    let out = match out {
+        Ok(o) => o,
+        Err(_) => return Ok(vec![]), // git not installed
+    };
+    if !out.status.success() {
+        return Ok(vec![]); // not a repo, or file untracked
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut commits = Vec::new();
+    for line in text.lines() {
+        let p: Vec<&str> = line.split('\u{1f}').collect();
+        if p.len() == 5 {
+            commits.push(GitCommit {
+                hash: p[0].to_string(),
+                short: p[1].to_string(),
+                author: p[2].to_string(),
+                date: p[3].to_string(),
+                subject: p[4].to_string(),
+            });
+        }
+    }
+    Ok(commits)
+}
+
+/// The contents of `file` as it was at `commit` (via `git show <commit>:./<file>`).
+#[tauri::command]
+fn git_show(dir: String, commit: String, file: String) -> Result<String, String> {
+    let spec = format!("{commit}:./{file}");
+    let out = std::process::Command::new("git")
+        .arg("-C").arg(&dir)
+        .arg("show").arg(&spec)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -123,6 +181,8 @@ pub fn run() {
             write_text,
             delete_file,
             list_files,
+            git_log,
+            git_show,
             ai_complete
         ])
         .run(tauri::generate_context!())

@@ -24,7 +24,20 @@ export const native = {
   /** POST a JSON body to an AI endpoint through the native layer (no CORS). */
   aiComplete: (url: string, headers: Record<string, string>, body: string) =>
     invoke<string>("ai_complete", { url, headers, body }),
+  /** Git commit history for one diagram file (newest first; empty if not a repo). */
+  gitLog: (dir: string, file: string) => invoke<GitCommit[]>("git_log", { dir, file }),
+  /** The diagram file's contents at a given commit. */
+  gitShow: (dir: string, commit: string, file: string) =>
+    invoke<string>("git_show", { dir, commit, file }),
 };
+
+export interface GitCommit {
+  hash: string;
+  short: string;
+  author: string;
+  date: string; // ISO 8601
+  subject: string;
+}
 
 /** Native folder picker (returns the chosen directory, or null if cancelled). */
 export async function pickWorkspaceFolder(): Promise<string | null> {
