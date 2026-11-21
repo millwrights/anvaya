@@ -407,6 +407,201 @@ kbd {
   outline: none;
 }
 
+/* Publish-to-Confluence dialog */
+.cf-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, #16181e);
+  border: 1px solid var(--border, #2a2e3a);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  color: var(--text, #e8ebf0);
+  overflow: hidden;
+}
+.cf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #2a2e3a);
+}
+.cf-body {
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim, #9aa0ad);
+  flex: 1;
+}
+.cf-row {
+  display: flex;
+  gap: 10px;
+}
+.cf-note {
+  font-size: 12px;
+  color: var(--text-dim, #9aa0ad);
+  line-height: 1.5;
+}
+.cf-warn {
+  color: #e0a23a;
+}
+.cf-link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent, #5b8cff);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  padding: 2px 0;
+}
+.cf-preview {
+  background: #fff;
+  color: #172b4d;
+  border-radius: 8px;
+  padding: 16px 18px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cf-preview h2 {
+  font-size: 15px;
+  margin: 14px 0 6px;
+}
+.cf-preview h3 {
+  font-size: 13px;
+  margin: 12px 0 3px;
+}
+.cf-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 4px 0 8px;
+}
+.cf-preview th,
+.cf-preview td {
+  border: 1px solid #dfe1e6;
+  padding: 4px 8px;
+  text-align: left;
+}
+.cf-preview th {
+  background: #f4f5f7;
+  color: #5e6c84;
+}
+.cf-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border, #2a2e3a);
+}
+.cf-ok {
+  font-size: 13px;
+  color: #4ec98f;
+}
+.cf-ok a {
+  color: var(--accent, #5b8cff);
+}
+.cf-err {
+  font-size: 12px;
+  color: #ef6a6a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 48px;
+}
+.cf-status {
+  font-size: 12px;
+  color: var(--text-dim, #9aa0ad);
+}
+.cf-publish {
+  background: var(--accent, #5b8cff);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.cf-publish:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Edge detail editor (structured fields + notes) */
+.edge-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edge-field-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.edge-field-row .sb-edit {
+  border: 1px solid var(--border, #33343d);
+  padding: 6px 7px;
+}
+.edge-field-row .ef-k {
+  flex: 0 0 38%;
+}
+.edge-field-row .ef-v {
+  flex: 1 1 auto;
+}
+.ef-del {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #8a8d98);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+.ef-del:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.ef-add {
+  margin: 6px 0 8px;
+  background: transparent;
+  border: 1px dashed var(--border, #33343d);
+  color: var(--text-dim, #8a8d98);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  width: 100%;
+}
+.ef-add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.edge-notes {
+  border: 1px solid var(--border, #33343d) !important;
+  min-height: 64px;
+  resize: vertical;
+  margin-bottom: 10px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
 /* Canvas */
 .stage-wrap {
   position: relative;

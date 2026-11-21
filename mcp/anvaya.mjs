@@ -99,6 +99,20 @@ const rand = (n = 10) => {
 
 const shapeOf = (s) => (ALLOWED_SHAPES.includes(s) ? s : "rounded");
 
+/** Clean an edge-detail spec → {fields,notes} or undefined when empty. */
+function normalizeDetail(d) {
+  if (!d || typeof d !== "object") return undefined;
+  const fields = (Array.isArray(d.fields) ? d.fields : [])
+    .map((f) => ({ k: String(f?.k ?? "").slice(0, 60), v: String(f?.v ?? "").slice(0, 400) }))
+    .filter((f) => f.k.trim() || f.v.trim());
+  const notes = String(d.notes ?? "").slice(0, 4000);
+  if (!fields.length && !notes.trim()) return undefined;
+  const out = {};
+  if (fields.length) out.fields = fields;
+  if (notes.trim()) out.notes = notes;
+  return out;
+}
+
 function slug(s) {
   return (
     (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "diagram"
@@ -341,6 +355,8 @@ function buildRecords(spec, startZ, originX, originY) {
       edge.targetAnchor = { fx: 1, fy: 0.5 };
       edge.waypoints = [{ x: laneX, y: fy }, { x: laneX, y: ty }];
     }
+    const detail = normalizeDetail(e.detail);
+    if (detail) edge.detail = detail;
     return edge;
   });
 
@@ -414,7 +430,13 @@ export async function readDiagram(name) {
     nodes: (d.nodes ?? [])
       .filter((n) => n.shape !== "draw" && n.shape !== "image")
       .map((n) => ({ id: n.id, label: n.text, shape: n.shape })),
-    edges: (d.edges ?? []).map((e) => ({ from: e.source, to: e.target, label: e.label ?? "" })),
+    edges: (d.edges ?? []).map((e) => ({
+      id: e.id,
+      from: e.source,
+      to: e.target,
+      label: e.label ?? "",
+      detail: e.detail,
+    })),
   };
 }
 
@@ -477,8 +499,8 @@ export async function setNodeColor({ name, id, color }) {
   return { name, id, fill: n.style.fill ?? "default" };
 }
 
-/** Connect two existing nodes by id. */
-export async function addEdge({ name, from, to, label }) {
+/** Connect two existing nodes by id (optionally with rich detail). */
+export async function addEdge({ name, from, to, label, detail }) {
   const doc = await readDoc(name);
   const ids = new Set((doc.nodes ?? []).map((n) => n.id));
   if (!ids.has(from) || !ids.has(to)) throw new Error(`Both "${from}" and "${to}" must exist.`);
@@ -493,10 +515,31 @@ export async function addEdge({ name, from, to, label }) {
     arrowStart: false,
     arrowEnd: true,
   };
+  const d = normalizeDetail(detail);
+  if (d) edge.detail = d;
   doc.edges = doc.edges ?? [];
   doc.edges.push(edge);
   await writeDoc(name, doc);
   return { name, edge: edge.id, from, to };
+}
+
+/**
+ * Attach (or clear) rich click-to-open detail on an existing connection — the
+ * "contract" of the edge: structured fields + freeform notes. Locate the edge by
+ * its endpoint node ids (from read_diagram) or directly by its edge id.
+ */
+export async function annotateEdge({ name, from, to, edgeId, detail }) {
+  const doc = await readDoc(name);
+  const edges = doc.edges ?? [];
+  const edge = edgeId
+    ? edges.find((e) => e.id === edgeId)
+    : edges.find((e) => e.source === from && e.target === to);
+  if (!edge) throw new Error(`No edge ${edgeId || `${from} → ${to}`} in ${name}.`);
+  const d = normalizeDetail(detail);
+  if (d) edge.detail = d;
+  else delete edge.detail;
+  await writeDoc(name, doc);
+  return { name, edge: edge.id, fields: d?.fields?.length ?? 0, notes: !!d?.notes };
 }
 
 /**

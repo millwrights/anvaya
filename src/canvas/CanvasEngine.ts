@@ -13,6 +13,7 @@ import { getStrokePoints } from "perfect-freehand";
 import type { AnvayaDoc } from "@/document/doc";
 import type { Commands } from "@/commands/commands";
 import type { EdgeRouting, NodeShape, NodeStyle, SceneEdge, SceneNode } from "@/document/types";
+import { edgeHasDetail } from "@/document/types";
 import { fontStack, onThemeChange, readableText, resolveStyle, shapeDefaults, theme } from "@/document/theme";
 import { ICON_GLYPH } from "@/document/icons";
 import { Camera, type Point } from "@/render/camera";
@@ -106,6 +107,8 @@ export class CanvasEngine {
   private unsubTheme: (() => void) | null = null;
   private texCache = new Map<string, Texture>();
   private resizeObs?: ResizeObserver;
+  private edgeTip?: HTMLDivElement;
+  private hoverEdgeId: string | null = null;
   private editingId: string | null = null;
   private lastRenderZoom = 1;
   private exportRes = 0; // >0 while rendering for image export (forces crisp text)
@@ -143,6 +146,16 @@ export class CanvasEngine {
       this.markCamera();
     });
     this.resizeObs.observe(this.host);
+
+    // Hover tooltip for annotated connectors (a one-line preview of the detail).
+    const tip = document.createElement("div");
+    tip.className = "edge-tip";
+    tip.style.cssText =
+      "position:absolute;z-index:5;max-width:240px;display:none;pointer-events:none;" +
+      "padding:4px 8px;border-radius:6px;font:12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
+      "background:rgba(18,20,26,0.96);color:#e8ebf0;border:1px solid rgba(255,255,255,0.12);white-space:nowrap;";
+    this.host.appendChild(tip);
+    this.edgeTip = tip;
 
     // previewGfx lives in world space (above nodes) so drag-to-draw previews
     // track the camera automatically.
@@ -184,6 +197,7 @@ export class CanvasEngine {
     this.host.removeEventListener("dragover", this.onDragOver);
     this.host.removeEventListener("drop", this.onDrop);
     this.resizeObs?.disconnect();
+    this.edgeTip?.remove();
     cancelAnimationFrame(this.rafHandle);
     this.app?.destroy(true, { children: true });
   }
@@ -596,15 +610,86 @@ export class CanvasEngine {
     const drawables: { z: number; svg: () => string }[] = [];
     for (const n of nodes)
       if (n.shape !== "frame") drawables.push({ z: n.z, svg: () => this.nodeSVG(n) });
-    for (const e of this.doc.allEdges())
-      drawables.push({ z: e.z ?? -1, svg: () => this.edgeSVG(e, byId) });
+    const edges = this.doc.allEdges();
+    for (const e of edges) drawables.push({ z: e.z ?? -1, svg: () => this.edgeSVG(e, byId) });
     drawables.sort((a, b) => a.z - b.z);
     for (const d of drawables) out.push(d.svg());
 
+    // Annotated edges → numbered markers on the lines + a detail appendix below,
+    // so click-to-open detail survives a static export.
+    const annotated = edges.filter(edgeHasDetail);
+    const numberOf = new Map(annotated.map((e, i) => [e.id, i + 1]));
+    for (const e of annotated) {
+      const sample = this.sampleEdge(e, byId);
+      if (!sample || !sample.length) continue;
+      const mid = sample[Math.floor(sample.length / 2)];
+      const my = mid.y + (e.label.trim() ? 16 : 0);
+      const num = numberOf.get(e.id)!;
+      out.push(
+        `<circle cx="${mid.x}" cy="${my}" r="9" fill="#3b82f6"/>` +
+          `<text x="${mid.x}" y="${my + 4}" text-anchor="middle" font-family="-apple-system, sans-serif" ` +
+          `font-size="11" font-weight="700" fill="#ffffff">${num}</text>`,
+      );
+    }
+    let extraH = 0;
+    if (annotated.length) {
+      const ap = this.appendixSVG(annotated, numberOf, byId, b);
+      out.push(ap.svg);
+      extraH = ap.height;
+    }
+
+    const totalH = b.h + extraH;
     return (
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" ` +
-      `viewBox="${b.x} ${b.y} ${b.w} ${b.h}">\n${out.join("\n")}\n</svg>\n`
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(totalH)}" ` +
+      `viewBox="${b.x} ${b.y} ${b.w} ${totalH}">\n${out.join("\n")}\n</svg>\n`
     );
+  }
+
+  /** A self-contained appendix panel listing every annotated edge's detail. */
+  private appendixSVG(
+    edges: SceneEdge[],
+    numberOf: Map<string, number>,
+    byId: Map<string, SceneNode>,
+    b: { x: number; y: number; w: number; h: number },
+  ): { svg: string; height: number } {
+    const padX = 16, padY = 14, lineH = 18, titleH = 24, entryGap = 12, gapAbove = 24;
+    const maxChars = Math.max(30, Math.floor((b.w - padX * 2 - 26) / 6.2));
+    const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+    const entries = edges.map((e) => {
+      const sn = byId.get(e.source)?.text.trim() || "source";
+      const tn = byId.get(e.target)?.text.trim() || "target";
+      const fields = (e.detail?.fields ?? []).filter((f) => f.k.trim() || f.v.trim());
+      const fline = fields
+        .map((f) => (f.k.trim() && f.v.trim() ? `${f.k}: ${f.v}` : f.k.trim() || f.v.trim()))
+        .join("  ·  ");
+      const notes = (e.detail?.notes ?? "").trim().replace(/\s+/g, " ");
+      const lines: string[] = [];
+      if (fline) lines.push(trunc(fline, maxChars));
+      if (notes) lines.push(trunc(notes, maxChars));
+      return { num: numberOf.get(e.id)!, head: trunc(`${sn} → ${tn}`, maxChars), lines };
+    });
+    let h = padY + titleH;
+    for (const en of entries) h += lineH + en.lines.length * lineH + entryGap;
+    h += padY - entryGap;
+    const x = b.x, y = b.y + b.h + gapAbove, w = b.w;
+    const FONT = `font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"`;
+    let s =
+      `<rect x="${x}" y="${y}" width="${w}" height="${Math.round(h)}" rx="10" fill="#141720" stroke="#2a2e3a" stroke-width="1"/>` +
+      `<text x="${x + padX}" y="${y + padY + 13}" ${FONT} font-size="12" font-weight="700" fill="#8a90a0" letter-spacing="0.5">CONNECTION DETAILS</text>`;
+    let cy = y + padY + titleH + 12;
+    for (const en of entries) {
+      s +=
+        `<circle cx="${x + padX + 8}" cy="${cy - 4}" r="8" fill="#3b82f6"/>` +
+        `<text x="${x + padX + 8}" y="${cy}" text-anchor="middle" ${FONT} font-size="11" font-weight="700" fill="#ffffff">${en.num}</text>` +
+        `<text x="${x + padX + 26}" y="${cy}" ${FONT} font-size="14" font-weight="600" fill="#e8ebf0">${esc(en.head)}</text>`;
+      cy += lineH;
+      for (const ln of en.lines) {
+        s += `<text x="${x + padX + 26}" y="${cy}" ${FONT} font-size="13" fill="#aeb4c2">${esc(ln)}</text>`;
+        cy += lineH;
+      }
+      cy += entryGap;
+    }
+    return { svg: s, height: gapAbove + Math.round(h) };
   }
 
   private branchSVG(parent: SceneNode, child: SceneNode): string {
@@ -1276,6 +1361,68 @@ export class CanvasEngine {
       this.contentLayer.addChild(bg);
       this.contentLayer.addChild(t);
     }
+
+    // Detail badge: a small ⓘ at the midpoint signalling click-to-open detail.
+    if (edgeHasDetail(e)) {
+      const mid = poly[Math.floor(poly.length / 2)];
+      const by = e.label.trim() ? mid.y + 16 : mid.y;
+      const r = 8;
+      const g2 = new Graphics();
+      g2.circle(mid.x, by, r).fill(theme.canvasBg).stroke({ color, width: 1.5 });
+      this.contentLayer.addChild(g2);
+      const it = new Text({
+        text: "i",
+        style: new TextStyle({
+          fill: color,
+          fontSize: 11,
+          fontWeight: "700",
+          fontStyle: "italic",
+          fontFamily: "Georgia, 'Times New Roman', serif",
+        }),
+      });
+      it.resolution = this.textRes();
+      it.anchor.set(0.5);
+      it.position.set(mid.x, by);
+      this.contentLayer.addChild(it);
+    }
+  }
+
+  /** First-line preview of an edge's detail, for the hover tooltip. */
+  private edgeDetailPreview(e: SceneEdge): string {
+    const d = e.detail;
+    if (!d) return "";
+    const fields = (d.fields ?? []).filter((f) => f.k.trim() || f.v.trim());
+    const notes = (d.notes ?? "").trim();
+    let head = "";
+    let extra = fields.length;
+    if (fields.length) {
+      const f = fields[0];
+      head = f.k.trim() && f.v.trim() ? `${f.k}: ${f.v}` : f.k.trim() || f.v.trim();
+      extra = fields.length - 1 + (notes ? 1 : 0);
+    } else if (notes) {
+      head = notes.split("\n")[0];
+      extra = 0;
+    }
+    if (head.length > 48) head = head.slice(0, 47) + "…";
+    return extra > 0 ? `${head}  ·  +${extra} more` : head;
+  }
+
+  /** Show/hide the connector hover tooltip at a host-relative screen point. */
+  private updateEdgeTip(edgeId: string | null, screen: { x: number; y: number }) {
+    if (!this.edgeTip) return;
+    const e = edgeId ? this.doc.getEdge(edgeId) : null;
+    if (!e || !edgeHasDetail(e)) {
+      if (this.hoverEdgeId) {
+        this.edgeTip.style.display = "none";
+        this.hoverEdgeId = null;
+      }
+      return;
+    }
+    this.hoverEdgeId = edgeId;
+    this.edgeTip.textContent = this.edgeDetailPreview(e);
+    this.edgeTip.style.left = `${Math.round(screen.x + 14)}px`;
+    this.edgeTip.style.top = `${Math.round(screen.y + 16)}px`;
+    this.edgeTip.style.display = "block";
   }
 
   /** Dense polyline of the drawn connector (for hit-testing). */
@@ -1658,6 +1805,7 @@ export class CanvasEngine {
       const world = this.camera.screenToWorld(p.x, p.y);
       last = p;
       downWorld = world;
+      this.updateEdgeTip(null, p); // hide connector preview while interacting
       dragged = false;
 
       // middle button or space-pan → pan
@@ -1879,7 +2027,14 @@ export class CanvasEngine {
         }
         this.hoverWorld = world;
         if (this.hoveredId) this.markScene(); // refresh the live connect anchor
-        el.style.cursor = this.hitConnectZone(world) ? "crosshair" : "default";
+        // Hover an annotated connector → one-line detail preview + pointer cursor.
+        const eid = id ? null : this.hitEdge(world);
+        this.updateEdgeTip(eid, localXY(e));
+        el.style.cursor = this.hitConnectZone(world)
+          ? "crosshair"
+          : eid
+            ? "pointer"
+            : "default";
       } else if (mode === "idle" && this.tool === "eraser") {
         this.drawEraserCursor(world); // ring follows the pointer
       }
@@ -2009,6 +2164,7 @@ export class CanvasEngine {
         this.hoveredId = null;
         this.markScene();
       }
+      this.updateEdgeTip(null, { x: 0, y: 0 }); // hide connector preview
     });
 
     el.addEventListener(

@@ -24,12 +24,41 @@ export const native = {
   /** POST a JSON body to an AI endpoint through the native layer (no CORS). */
   aiComplete: (url: string, headers: Record<string, string>, body: string) =>
     invoke<string>("ai_complete", { url, headers, body }),
+  /** Generic HTTP request through the native layer (Confluence publishing). */
+  httpRequest: (
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: string,
+  ) => invoke<HttpResponse>("http_request", { method, url, headers, body: body ?? null }),
+  /** Multipart file upload (one part) through the native layer. */
+  httpUpload: (
+    url: string,
+    headers: Record<string, string>,
+    fieldName: string,
+    filename: string,
+    contentType: string,
+    data: number[],
+  ) =>
+    invoke<HttpResponse>("http_upload", {
+      url,
+      headers,
+      fieldName,
+      filename,
+      contentType,
+      data,
+    }),
   /** Git commit history for one diagram file (newest first; empty if not a repo). */
   gitLog: (dir: string, file: string) => invoke<GitCommit[]>("git_log", { dir, file }),
   /** The diagram file's contents at a given commit. */
   gitShow: (dir: string, commit: string, file: string) =>
     invoke<string>("git_show", { dir, commit, file }),
 };
+
+export interface HttpResponse {
+  status: number;
+  body: string;
+}
 
 export interface GitCommit {
   hash: string;

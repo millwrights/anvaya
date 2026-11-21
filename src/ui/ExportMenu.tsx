@@ -8,6 +8,7 @@ import { exportExcalidraw, importExcalidraw } from "@/workspace/excalidraw";
 // raw .anvaya document.
 export function ExportMenu() {
   const engine = useApp((s) => s.engine);
+  const setConfluenceOpen = useApp((s) => s.setConfluenceOpen);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -80,6 +81,16 @@ export function ExportMenu() {
             </button>
             <button className="ins-item" onClick={excalidraw}>
               🎨 Excalidraw file
+            </button>
+            <div className="ins-sep" />
+            <button
+              className="ins-item"
+              onClick={() => {
+                setConfluenceOpen(true);
+                setOpen(false);
+              }}
+            >
+              📘 Publish to Confluence…
             </button>
             <div className="ins-sep" />
             <button className="ins-item" onClick={() => fileRef.current?.click()}>

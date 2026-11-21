@@ -21512,6 +21512,16 @@ var rand = (n = 10) => {
   return s;
 };
 var shapeOf = (s) => ALLOWED_SHAPES.includes(s) ? s : "rounded";
+function normalizeDetail(d) {
+  if (!d || typeof d !== "object") return void 0;
+  const fields = (Array.isArray(d.fields) ? d.fields : []).map((f) => ({ k: String(f?.k ?? "").slice(0, 60), v: String(f?.v ?? "").slice(0, 400) })).filter((f) => f.k.trim() || f.v.trim());
+  const notes = String(d.notes ?? "").slice(0, 4e3);
+  if (!fields.length && !notes.trim()) return void 0;
+  const out = {};
+  if (fields.length) out.fields = fields;
+  if (notes.trim()) out.notes = notes;
+  return out;
+}
 function slug(s) {
   return (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "diagram";
 }
@@ -21714,6 +21724,8 @@ function buildRecords(spec, startZ, originX, originY) {
       edge.targetAnchor = { fx: 1, fy: 0.5 };
       edge.waypoints = [{ x: laneX, y: fy }, { x: laneX, y: ty }];
     }
+    const detail = normalizeDetail(e.detail);
+    if (detail) edge.detail = detail;
     return edge;
   });
   return { nodes, edges };
@@ -21776,7 +21788,13 @@ async function readDiagram(name) {
     folder: d.folder ?? "",
     tags: d.tags ?? [],
     nodes: (d.nodes ?? []).filter((n) => n.shape !== "draw" && n.shape !== "image").map((n) => ({ id: n.id, label: n.text, shape: n.shape })),
-    edges: (d.edges ?? []).map((e) => ({ from: e.source, to: e.target, label: e.label ?? "" }))
+    edges: (d.edges ?? []).map((e) => ({
+      id: e.id,
+      from: e.source,
+      to: e.target,
+      label: e.label ?? "",
+      detail: e.detail
+    }))
   };
 }
 async function createDiagram({ title, nodes, edges, folder, tags }) {
@@ -21831,7 +21849,7 @@ async function setNodeColor({ name, id, color }) {
   await writeDoc(name, doc);
   return { name, id, fill: n.style.fill ?? "default" };
 }
-async function addEdge({ name, from, to, label }) {
+async function addEdge({ name, from, to, label, detail }) {
   const doc = await readDoc(name);
   const ids = new Set((doc.nodes ?? []).map((n) => n.id));
   if (!ids.has(from) || !ids.has(to)) throw new Error(`Both "${from}" and "${to}" must exist.`);
@@ -21846,10 +21864,23 @@ async function addEdge({ name, from, to, label }) {
     arrowStart: false,
     arrowEnd: true
   };
+  const d = normalizeDetail(detail);
+  if (d) edge.detail = d;
   doc.edges = doc.edges ?? [];
   doc.edges.push(edge);
   await writeDoc(name, doc);
   return { name, edge: edge.id, from, to };
+}
+async function annotateEdge({ name, from, to, edgeId, detail }) {
+  const doc = await readDoc(name);
+  const edges = doc.edges ?? [];
+  const edge = edgeId ? edges.find((e) => e.id === edgeId) : edges.find((e) => e.source === from && e.target === to);
+  if (!edge) throw new Error(`No edge ${edgeId || `${from} \u2192 ${to}`} in ${name}.`);
+  const d = normalizeDetail(detail);
+  if (d) edge.detail = d;
+  else delete edge.detail;
+  await writeDoc(name, doc);
+  return { name, edge: edge.id, fields: d?.fields?.length ?? 0, notes: !!d?.notes };
 }
 async function describeDiagram(name) {
   const doc = await readDoc(name);
@@ -22020,10 +22051,17 @@ var nodeSchema = external_exports.object({
     "Optional icon key from list_icons \u2014 renders the node as a labelled product/tech glyph (e.g. 'logos-aws-ec2', 'postgresql', 'carbon-router') with `label` as its caption. When set, `shape` is ignored. Use for software-architecture, cloud, infra and tech-stack diagrams."
   )
 });
+var edgeDetailSchema = external_exports.object({
+  fields: external_exports.array(external_exports.object({ k: external_exports.string().describe("Field name, e.g. Protocol."), v: external_exports.string().describe("Field value, e.g. gRPC.") })).optional().describe("Ordered structured fields \u2014 the connection's contract (Protocol, Auth, Payload, Latency, Retries, On-error\u2026)."),
+  notes: external_exports.string().optional().describe("Freeform notes: quirks, failure modes, links.")
+}).describe(
+  "Rich click-to-open detail for the connection. Shown in the Inspector on click, previewed on hover, and exported as a numbered footnote with an appendix. Use for the deep information that doesn't fit on the line."
+);
 var edgeSchema = external_exports.object({
   from: external_exports.string().describe("Source node id."),
   to: external_exports.string().describe("Target node id."),
-  label: external_exports.string().optional().describe("Optional edge label, e.g. Yes/No.")
+  label: external_exports.string().optional().describe("Optional short edge label, e.g. Yes/No."),
+  detail: edgeDetailSchema.optional()
 });
 var ok = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
 var fail = (e) => ({
@@ -22071,7 +22109,7 @@ server.tool(
 );
 server.tool(
   "create_diagram",
-  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. Returns the created file name.",
+  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. An edge can also carry `detail` (structured fields + notes) for its contract \u2014 protocol, auth, payload, retries, failure modes \u2014 shown on click and exported as a footnote. Returns the created file name.",
   {
     title: external_exports.string().describe("Diagram title."),
     nodes: external_exports.array(nodeSchema).min(1).describe("The shapes."),
@@ -22177,11 +22215,35 @@ server.tool(
 );
 server.tool(
   "add_edge",
-  "Connect two existing nodes (by id) with a directed arrow.",
-  { name: external_exports.string(), from: external_exports.string(), to: external_exports.string(), label: external_exports.string().optional() },
+  "Connect two existing nodes (by id) with a directed arrow, optionally with rich detail.",
+  {
+    name: external_exports.string(),
+    from: external_exports.string(),
+    to: external_exports.string(),
+    label: external_exports.string().optional(),
+    detail: edgeDetailSchema.optional()
+  },
   async (args) => {
     try {
       return ok(await addEdge(args));
+    } catch (e) {
+      return fail(e);
+    }
+  }
+);
+server.tool(
+  "annotate_edge",
+  "Attach rich click-to-open detail to an existing connection \u2014 the 'contract' of the edge (protocol, auth, payload, retries, failure modes) that is too much for a line label. Locate the edge by its endpoint node ids (from read_diagram) or by its edge id. Pass an empty detail to clear it. The app shows an \u24D8 badge on annotated edges, a hover preview, the full detail on click, and a numbered footnote + appendix on export.",
+  {
+    name: external_exports.string(),
+    from: external_exports.string().optional().describe("Source node id (from read_diagram)."),
+    to: external_exports.string().optional().describe("Target node id (from read_diagram)."),
+    edgeId: external_exports.string().optional().describe("Edge id (from read_diagram), as an alternative to from/to."),
+    detail: edgeDetailSchema
+  },
+  async (args) => {
+    try {
+      return ok(await annotateEdge(args));
     } catch (e) {
       return fail(e);
     }

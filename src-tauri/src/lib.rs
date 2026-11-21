@@ -113,6 +113,103 @@ async fn ai_complete(
 }
 
 #[derive(serde::Serialize)]
+struct HttpResponse {
+    status: u16,
+    body: String,
+}
+
+/// Generic HTTP request through the native layer (no CORS; credentials stay off
+/// web storage). Non-2xx responses are returned as Ok with their status + body
+/// so the caller can read API error messages. Used for Confluence publishing.
+#[tauri::command]
+async fn http_request(
+    method: String,
+    url: String,
+    headers: HashMap<String, String>,
+    body: Option<String>,
+) -> Result<HttpResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut req = match method.to_uppercase().as_str() {
+            "GET" => ureq::get(&url),
+            "POST" => ureq::post(&url),
+            "PUT" => ureq::put(&url),
+            "DELETE" => ureq::delete(&url),
+            m => return Err(format!("unsupported method: {m}")),
+        };
+        for (k, v) in &headers {
+            req = req.set(k, v);
+        }
+        let result = match body {
+            Some(b) => req.send_string(&b),
+            None => req.call(),
+        };
+        match result {
+            Ok(resp) => {
+                let status = resp.status();
+                let text = resp.into_string().map_err(|e| e.to_string())?;
+                Ok(HttpResponse { status, body: text })
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let text = resp.into_string().unwrap_or_default();
+                Ok(HttpResponse { status: code, body: text })
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Upload a file as multipart/form-data (one part). For Confluence attachments
+/// the caller sets `field_name` to "file" and includes the X-Atlassian-Token
+/// header. `data` is the raw file bytes.
+#[tauri::command]
+async fn http_upload(
+    url: String,
+    headers: HashMap<String, String>,
+    field_name: String,
+    filename: String,
+    content_type: String,
+    data: Vec<u8>,
+) -> Result<HttpResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let boundary = format!("----anvaya{:x}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0));
+        let mut payload: Vec<u8> = Vec::with_capacity(data.len() + 512);
+        payload.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{field_name}\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        payload.extend_from_slice(&data);
+        payload.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+        let mut req = ureq::post(&url)
+            .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
+        for (k, v) in &headers {
+            req = req.set(k, v);
+        }
+        match req.send_bytes(&payload) {
+            Ok(resp) => {
+                let status = resp.status();
+                let text = resp.into_string().map_err(|e| e.to_string())?;
+                Ok(HttpResponse { status, body: text })
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let text = resp.into_string().unwrap_or_default();
+                Ok(HttpResponse { status: code, body: text })
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(serde::Serialize)]
 struct GitCommit {
     hash: String,
     short: String,
@@ -183,7 +280,9 @@ pub fn run() {
             list_files,
             git_log,
             git_show,
-            ai_complete
+            ai_complete,
+            http_request,
+            http_upload
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anvaya");

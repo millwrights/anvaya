@@ -11,6 +11,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   addEdge,
+  annotateEdge,
   appendToDiagram,
   createDiagram,
   deleteNode,
@@ -44,10 +45,23 @@ const nodeSchema = z.object({
       "Optional icon key from list_icons — renders the node as a labelled product/tech glyph (e.g. 'logos-aws-ec2', 'postgresql', 'carbon-router') with `label` as its caption. When set, `shape` is ignored. Use for software-architecture, cloud, infra and tech-stack diagrams.",
     ),
 });
+const edgeDetailSchema = z
+  .object({
+    fields: z
+      .array(z.object({ k: z.string().describe("Field name, e.g. Protocol."), v: z.string().describe("Field value, e.g. gRPC.") }))
+      .optional()
+      .describe("Ordered structured fields — the connection's contract (Protocol, Auth, Payload, Latency, Retries, On-error…)."),
+    notes: z.string().optional().describe("Freeform notes: quirks, failure modes, links."),
+  })
+  .describe(
+    "Rich click-to-open detail for the connection. Shown in the Inspector on click, previewed on hover, and exported as a numbered footnote with an appendix. Use for the deep information that doesn't fit on the line.",
+  );
+
 const edgeSchema = z.object({
   from: z.string().describe("Source node id."),
   to: z.string().describe("Target node id."),
-  label: z.string().optional().describe("Optional edge label, e.g. Yes/No."),
+  label: z.string().optional().describe("Optional short edge label, e.g. Yes/No."),
+  detail: edgeDetailSchema.optional(),
 });
 
 const ok = (data) => ({ content: [{ type: "text", text: JSON.stringify(data, null, 2) }] });
@@ -100,7 +114,7 @@ server.tool(
 
 server.tool(
   "create_diagram",
-  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. Returns the created file name.",
+  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. An edge can also carry `detail` (structured fields + notes) for its contract — protocol, auth, payload, retries, failure modes — shown on click and exported as a footnote. Returns the created file name.",
   {
     title: z.string().describe("Diagram title."),
     nodes: z.array(nodeSchema).min(1).describe("The shapes."),
@@ -213,11 +227,36 @@ server.tool(
 
 server.tool(
   "add_edge",
-  "Connect two existing nodes (by id) with a directed arrow.",
-  { name: z.string(), from: z.string(), to: z.string(), label: z.string().optional() },
+  "Connect two existing nodes (by id) with a directed arrow, optionally with rich detail.",
+  {
+    name: z.string(),
+    from: z.string(),
+    to: z.string(),
+    label: z.string().optional(),
+    detail: edgeDetailSchema.optional(),
+  },
   async (args) => {
     try {
       return ok(await addEdge(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
+  "annotate_edge",
+  "Attach rich click-to-open detail to an existing connection — the 'contract' of the edge (protocol, auth, payload, retries, failure modes) that is too much for a line label. Locate the edge by its endpoint node ids (from read_diagram) or by its edge id. Pass an empty detail to clear it. The app shows an ⓘ badge on annotated edges, a hover preview, the full detail on click, and a numbered footnote + appendix on export.",
+  {
+    name: z.string(),
+    from: z.string().optional().describe("Source node id (from read_diagram)."),
+    to: z.string().optional().describe("Target node id (from read_diagram)."),
+    edgeId: z.string().optional().describe("Edge id (from read_diagram), as an alternative to from/to."),
+    detail: edgeDetailSchema,
+  },
+  async (args) => {
+    try {
+      return ok(await annotateEdge(args));
     } catch (e) {
       return fail(e);
     }

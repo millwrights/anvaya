@@ -186,6 +186,57 @@ export function Inspector() {
           onKeyDown={(ev) => ev.stopPropagation()}
         />
 
+        {(() => {
+          const detail = e?.detail ?? {};
+          const fields = detail.fields ?? [];
+          const setDetail = (d: typeof detail) => commands.updateEdge(edgeId, { detail: d });
+          const setFields = (fs: { k: string; v: string }[]) => setDetail({ ...detail, fields: fs });
+          return (
+            <>
+              <div className="field" style={{ marginTop: 4 }}>
+                <label>Details</label>
+              </div>
+              <div className="edge-fields">
+                {fields.map((f, i) => (
+                  <div className="edge-field-row" key={i}>
+                    <input
+                      className="sb-edit ef-k"
+                      placeholder="Field"
+                      value={f.k}
+                      onChange={(ev) => setFields(fields.map((x, j) => (j === i ? { ...x, k: ev.target.value } : x)))}
+                      onKeyDown={(ev) => ev.stopPropagation()}
+                    />
+                    <input
+                      className="sb-edit ef-v"
+                      placeholder="Value"
+                      value={f.v}
+                      onChange={(ev) => setFields(fields.map((x, j) => (j === i ? { ...x, v: ev.target.value } : x)))}
+                      onKeyDown={(ev) => ev.stopPropagation()}
+                    />
+                    <button
+                      className="ef-del"
+                      title="Remove field"
+                      onClick={() => setFields(fields.filter((_, j) => j !== i))}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button className="ef-add" onClick={() => setFields([...fields, { k: "", v: "" }])}>
+                ＋ Add field
+              </button>
+              <textarea
+                className="sb-edit edge-notes"
+                placeholder="Notes — protocol quirks, retries, failure modes, links…"
+                value={detail.notes ?? ""}
+                onChange={(ev) => setDetail({ ...detail, notes: ev.target.value })}
+                onKeyDown={(ev) => ev.stopPropagation()}
+              />
+            </>
+          );
+        })()}
+
         <div className="ins-hint">
           Drag a dot on the line to add a bend · double-click a bend to remove.
         </div>

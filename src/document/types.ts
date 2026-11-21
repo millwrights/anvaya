@@ -68,6 +68,22 @@ export type EdgeKind =
 
 export type EdgeRouting = "straight" | "curved" | "step";
 
+/** One named field in an edge's structured detail (e.g. {k:"Protocol", v:"gRPC"}). */
+export interface EdgeField {
+  k: string;
+  v: string;
+}
+
+/**
+ * Rich, click-to-open detail for a connection — the "contract" of the edge.
+ * Structured `fields` (ordered) plus a freeform `notes` block. An edge is treated
+ * as annotated when either carries content; the canvas then shows an ⓘ badge.
+ */
+export interface EdgeDetail {
+  fields?: EdgeField[];
+  notes?: string;
+}
+
 export interface SceneEdge {
   id: EdgeId;
   source: NodeId;
@@ -99,6 +115,15 @@ export interface SceneEdge {
   targetPoint?: { x: number; y: number };
   /** Paint order shared with nodes. Absent → renders below objects (the default). */
   z?: number;
+  /** Rich click-to-open detail (structured fields + notes). Absent → plain edge. */
+  detail?: EdgeDetail;
+}
+
+/** True when an edge carries any structured field or notes worth a badge. */
+export function edgeHasDetail(e: SceneEdge): boolean {
+  const d = e.detail;
+  if (!d) return false;
+  return !!(d.notes && d.notes.trim()) || !!(d.fields && d.fields.some((f) => f.k.trim() || f.v.trim()));
 }
 
 export type LayoutAlgorithm = "mindmap-right" | "mindmap-radial";

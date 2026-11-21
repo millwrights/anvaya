@@ -28,6 +28,7 @@ import { AiPanel } from "./AiPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { PreviewBanner } from "./PreviewBanner";
 import { IconPicker } from "./IconPicker";
+import { ConfluenceDialog } from "./ConfluenceDialog";
 
 function isTyping(): boolean {
   const el = document.activeElement;
@@ -199,6 +200,7 @@ export function App() {
       <CommandPalette />
       <AiPanel />
       <HistoryPanel />
+      <ConfluenceDialog />
       <PreviewBanner />
     </div>
   );

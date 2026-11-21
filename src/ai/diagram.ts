@@ -24,6 +24,7 @@ interface SpecEdge {
   from: string;
   to: string;
   label?: string;
+  detail?: { fields?: { k: string; v: string }[]; notes?: string };
 }
 interface DiagramSpec {
   title?: string;
@@ -37,13 +38,14 @@ Schema:
 {
   "title": string,                       // short title for the diagram
   "nodes": [ { "id": string, "label": string, "shape": string, "icon": string } ],
-  "edges": [ { "from": string, "to": string, "label": string } ]  // label optional
+  "edges": [ { "from": string, "to": string, "label": string, "detail": { "fields": [{ "k": string, "v": string }], "notes": string } } ]  // label and detail optional
 }
 
 Rules:
 - "id" is a short unique slug you invent (e.g. "start", "check_stock"). Edges reference these ids.
 - Choose "shape" by meaning: start/end -> "ellipse"; a step/process -> "rounded"; a decision/branch -> "diamond"; a note/data -> "note"; a mind-map idea -> "topic"; default -> "rounded".
 - Keep the labels on flow nodes concise (a few words). For decision branches, put "Yes"/"No" (etc.) on the edge label.
+- EDGE DETAIL: when a connection carries more than fits on the line — a protocol/contract, auth, payload, latency, retries, failure modes — attach "detail" to that edge: { "fields": [ { "k": "Protocol", "v": "gRPC" }, … ], "notes": "…" }. The app shows an ⓘ badge, a hover preview, the full detail on click, and a numbered footnote on export. Add it only where the extra depth is genuinely useful, not on every edge.
 - Add helpful detail mind-map style: for the important steps, add a separate "note" node holding a short one-line description or example, connected to that step. These annotations sit outside the main boxes and enrich the diagram — include a few, but don't clutter every node.
 - ICONS: for software-architecture, cloud, infrastructure or tech-stack diagrams, set "icon" on a node to represent it as a labelled product/technology glyph instead of a plain box. Use the node's "label" as its caption (e.g. "Postgres", "Orders API", "Load Balancer"). When "icon" is set, omit "shape". Only use an icon key from this catalog; if nothing fits, use a plain shape instead:
 ${ICON_PROMPT_CATALOG}
@@ -74,6 +76,20 @@ function extractJson(text: string): DiagramSpec {
 
 const shapeOf = (s?: string): NodeShape =>
   s && (ALLOWED as string[]).includes(s) ? (s as NodeShape) : "rounded";
+
+/** Clean a model-supplied edge detail → {fields,notes} or undefined when empty. */
+function normalizeEdgeDetail(d?: SpecEdge["detail"]): { fields?: { k: string; v: string }[]; notes?: string } | undefined {
+  if (!d || typeof d !== "object") return undefined;
+  const fields = (Array.isArray(d.fields) ? d.fields : [])
+    .map((f) => ({ k: String(f?.k ?? "").slice(0, 60), v: String(f?.v ?? "").slice(0, 400) }))
+    .filter((f) => f.k.trim() || f.v.trim());
+  const notes = String(d.notes ?? "").slice(0, 4000);
+  if (!fields.length && !notes.trim()) return undefined;
+  const out: { fields?: { k: string; v: string }[]; notes?: string } = {};
+  if (fields.length) out.fields = fields;
+  if (notes.trim()) out.notes = notes;
+  return out;
+}
 
 export interface BuildResult {
   title?: string;
@@ -162,6 +178,8 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
       const edge = commands.connect(real.get(e.from)!, real.get(e.to)!, "flow", ends);
       const patch: Record<string, unknown> = {};
       if (e.label) patch.label = String(e.label).slice(0, 80);
+      const detail = normalizeEdgeDetail(e.detail);
+      if (detail) patch.detail = detail;
       if (!channel) {
         const laneX = Math.round(gutterBase + lane++ * 46);
         patch.routing = "step";

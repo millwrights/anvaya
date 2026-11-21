@@ -14,6 +14,8 @@ interface AppStore {
   setHistoryOpen: (v: boolean) => void;
   iconsOpen: boolean;
   setIconsOpen: (v: boolean) => void;
+  confluenceOpen: boolean;
+  setConfluenceOpen: (v: boolean) => void;
   // Set while viewing a past version / diff (read-only); null = live editing.
   preview: { label: string; legend?: { color: string; text: string }[] } | null;
   setPreview: (v: AppStore["preview"]) => void;
@@ -32,6 +34,8 @@ export const useApp = create<AppStore>((set) => ({
   setHistoryOpen: (historyOpen) => set({ historyOpen }),
   iconsOpen: false,
   setIconsOpen: (iconsOpen) => set({ iconsOpen }),
+  confluenceOpen: false,
+  setConfluenceOpen: (confluenceOpen) => set({ confluenceOpen }),
   preview: null,
   setPreview: (preview) => set({ preview }),
 }));
