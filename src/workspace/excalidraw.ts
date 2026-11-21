@@ -160,7 +160,7 @@ export function exportExcalidraw(): string {
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
   for (const n of nodes) {
-    if (n.shape === "image") continue; // skip embedded images
+    if (n.shape === "image" || n.shape === "icon") continue; // skip embedded images / icons
     if (n.shape === "draw") {
       const pts: [number, number][] = [];
       for (let i = 0; i < (n.points?.length ?? 0); i += 2) pts.push([n.points![i], n.points![i + 1]]);

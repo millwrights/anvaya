@@ -29,10 +29,14 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@iconify-json/carbon": "^1.2.30",
+    "@iconify-json/devicon": "^1.2.83",
+    "@iconify-json/logos": "^1.2.20",
     "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "simple-icons": "^16.38.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }

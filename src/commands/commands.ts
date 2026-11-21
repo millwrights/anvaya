@@ -481,6 +481,28 @@ export class Commands {
   }
 
   // ── images ───────────────────────────────────────────────────────────────────
+  /** Drop an icon (library SVG or imported SVG markup) centered on (x, y). A
+   *  `fill` makes it recolorable (the renderer swaps the icon's currentColor). */
+  createIcon(svg: string, x: number, y: number, size = 64, fill?: string): SceneNode {
+    const node: SceneNode = {
+      id: nanoid(10),
+      shape: "icon",
+      x: Math.round(x - size / 2),
+      y: Math.round(y - size / 2),
+      w: Math.round(size),
+      h: Math.round(size),
+      text: "",
+      parentId: null,
+      layoutId: null,
+      collapsed: false,
+      style: fill ? { fill } : {},
+      z: this.nextZ(),
+      src: svg,
+    };
+    this.doc.putNode(node);
+    return node;
+  }
+
   createImage(src: string, x: number, y: number, w: number, h: number): SceneNode {
     const node: SceneNode = {
       id: nanoid(10),

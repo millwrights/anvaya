@@ -17,6 +17,7 @@ export type NodeShape =
   | "sticky" // colored sticky note
   | "frame" // titled section/container drawn behind content
   | "image" // embedded image (uses `src`)
+  | "icon" // vector icon / imported SVG (uses `src` = SVG markup; `style.fill` tints it)
   | "text" // label only, no box
   | "draw"; // freehand pen stroke (uses `points`)
 

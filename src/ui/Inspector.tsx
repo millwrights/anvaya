@@ -282,20 +282,57 @@ export function Inspector() {
     engine.setInk(color ?? ink.color, width ?? ink.width);
   };
 
+  const iconNode = ref?.shape === "icon" ? ref : undefined;
+  // Only monochrome icons (those drawn with currentColor) can be recolored.
+  const iconTintable = !!iconNode && (iconNode.src ?? "").includes("currentColor");
   const showStroke = penMode || !!strokeNode;
-  const showNodeProps = !!ref && !strokeNode;
+  const showNodeProps = !!ref && !strokeNode && !iconNode;
 
   return (
     <div className="inspector">
       <h3>
         {strokeNode
           ? "Stroke"
-          : penMode && sel.length === 0
-            ? "Pen"
-            : sel.length > 1
-              ? `${sel.length} selected`
-              : "Node"}
+          : iconNode
+            ? "Icon"
+            : penMode && sel.length === 0
+              ? "Pen"
+              : sel.length > 1
+                ? `${sel.length} selected`
+                : "Node"}
       </h3>
+
+      {iconNode && (
+        <>
+          {iconTintable && (
+            <>
+              <div className="field">
+                <label>Color</label>
+              </div>
+              <div className="swatches" style={{ marginBottom: 10 }}>
+                {["#e8ebf0", "#111318", ...FILLS.slice(1)].map((c) => (
+                  <div
+                    key={c}
+                    className={`swatch ${(iconNode.style.fill ?? "#e8ebf0") === c ? "on" : ""}`}
+                    style={{ background: c }}
+                    onClick={() => commands.updateNodesStyle(nodeIds, { fill: c })}
+                  />
+                ))}
+                <ColorPick
+                  value={iconNode.style.fill ?? "#e8ebf0"}
+                  onPick={(c) => commands.updateNodesStyle(nodeIds, { fill: c })}
+                  title="Custom icon color…"
+                />
+              </div>
+            </>
+          )}
+          <div className="ins-hint">
+            {iconTintable
+              ? "Drag a corner handle to resize · recolor above."
+              : "Full-color icon — drag a corner handle to resize."}
+          </div>
+        </>
+      )}
 
       {showStroke && (
         <>

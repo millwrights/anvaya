@@ -27,6 +27,7 @@ import { StatusBar } from "./StatusBar";
 import { AiPanel } from "./AiPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { PreviewBanner } from "./PreviewBanner";
+import { IconPicker } from "./IconPicker";
 
 function isTyping(): boolean {
   const el = document.activeElement;
@@ -41,6 +42,7 @@ function isTyping(): boolean {
 export function App() {
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
   const engine = useApp((s) => s.engine);
+  const iconsOpen = useApp((s) => s.iconsOpen);
 
   // Route native Cmd+V paste: image → node, else paste copied nodes.
   useEffect(() => {
@@ -184,11 +186,12 @@ export function App() {
   }, [setPaletteOpen]);
 
   return (
-    <div className="app">
+    <div className={`app ${iconsOpen ? "icons-open" : ""}`}>
       <Toolbar />
       <div className="mid">
         <Sidebar />
         <Canvas />
+        <IconPicker />
       </div>
       <Inspector />
       <Minimap />

@@ -26,6 +26,8 @@ export function Toolbar() {
   const engine = useApp((s) => s.engine);
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
   const setAiOpen = useApp((s) => s.setAiOpen);
+  const setIconsOpen = useApp((s) => s.setIconsOpen);
+  const iconsOpen = useApp((s) => s.iconsOpen);
   const toggleSidebar = useApp((s) => s.toggleSidebar);
   const [tool, setTool] = useState<Tool>("select");
   const [title, setTitle] = useState(doc.title());
@@ -99,6 +101,14 @@ export function Toolbar() {
       </button>
 
       <InsertMenu />
+
+      <button
+        className={`tb ${iconsOpen ? "active" : ""}`}
+        onClick={() => setIconsOpen(!iconsOpen)}
+        title="Icon library & SVG import"
+      >
+        ⬡ Icons
+      </button>
 
       <button className="tb ai-btn" onClick={() => setAiOpen(true)} title="Generate a diagram with AI">
         ✨ AI

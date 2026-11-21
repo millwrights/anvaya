@@ -773,6 +773,120 @@ kbd {
   color: var(--text-dim);
 }
 
+/* Icon picker — docked right column */
+.ic-col {
+  flex: 0 0 272px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+/* Nudge the floating right-edge widgets clear of the open column */
+.app.icons-open .inspector,
+.app.icons-open .minimap {
+  right: 284px;
+}
+.ic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+.ic-top {
+  display: flex;
+  gap: 8px;
+}
+.ic-search {
+  flex: 1;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.ic-search:focus {
+  border-color: var(--accent);
+}
+.ic-import {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ic-import:hover {
+  border-color: var(--accent);
+}
+.ic-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ic-cat {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ic-cat.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.ic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.ic-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 12px;
+}
+.ic-cell:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ic-cell svg {
+  width: 100%;
+  height: 100%;
+}
+.ic-empty {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 16px 4px;
+}
+.ic-foot {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
 /* Version history panel */
 .hist-scrim {
   position: fixed;

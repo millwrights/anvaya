@@ -104,6 +104,7 @@ export class CanvasEngine {
   private cursorCb: ((w: Point) => void) | null = null;
   private unsubTheme: (() => void) | null = null;
   private texCache = new Map<string, Texture>();
+  private resizeObs?: ResizeObserver;
   private editingId: string | null = null;
   private lastRenderZoom = 1;
   private exportRes = 0; // >0 while rendering for image export (forces crisp text)
@@ -132,6 +133,15 @@ export class CanvasEngine {
       preference: "webgl",
     });
     this.host.appendChild(this.app.canvas);
+
+    // Keep the renderer matched to the host whenever it changes size (e.g. the
+    // icon column or sidebar opening/closing), not just on window resize.
+    this.resizeObs = new ResizeObserver(() => {
+      if (!this.app) return;
+      this.app.resize();
+      this.markCamera();
+    });
+    this.resizeObs.observe(this.host);
 
     // previewGfx lives in world space (above nodes) so drag-to-draw previews
     // track the camera automatically.
@@ -172,6 +182,7 @@ export class CanvasEngine {
     window.removeEventListener("keyup", this.onSpaceKey);
     this.host.removeEventListener("dragover", this.onDragOver);
     this.host.removeEventListener("drop", this.onDrop);
+    this.resizeObs?.disconnect();
     cancelAnimationFrame(this.rafHandle);
     this.app?.destroy(true, { children: true });
   }
@@ -618,6 +629,12 @@ export class CanvasEngine {
     if (n.shape === "image" && n.src) {
       return `<image href="${esc(n.src)}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}"/>`;
     }
+    if (n.shape === "icon" && n.src) {
+      const fill = s.fill && s.fill !== "#00000000" ? s.fill : "#1a1d23";
+      const colored = n.src.includes("currentColor") ? n.src.replace(/currentColor/g, fill) : n.src;
+      const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
+      return `<image href="${esc(uri)}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}"/>`;
+    }
     let shape = "";
     if (n.shape !== "text") {
       const stroke =
@@ -713,6 +730,11 @@ export class CanvasEngine {
 
     if (n.shape === "image") {
       this.drawImageNode(n);
+      return;
+    }
+
+    if (n.shape === "icon") {
+      this.drawIconNode(n);
       return;
     }
 
@@ -816,6 +838,30 @@ export class CanvasEngine {
     t.resolution = this.textRes();
     t.position.set(n.x + 10, n.y + 8);
     this.contentLayer.addChild(t);
+  }
+
+  /** Render a vector icon / imported SVG, recolored to its tint and cached as a
+   *  texture (crisp at normal zoom, loads lazily like an image). */
+  private drawIconNode(n: SceneNode) {
+    if (!n.src) return;
+    const fill = n.style.fill || "#e8ebf0";
+    const colored = n.src.includes("currentColor") ? n.src.replace(/currentColor/g, fill) : n.src;
+    const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
+    const tex = this.texCache.get(uri);
+    if (!tex) {
+      const img = new Image();
+      img.onload = () => {
+        this.texCache.set(uri, Texture.from(img));
+        this.markScene();
+      };
+      img.src = uri;
+      return;
+    }
+    const sprite = new Sprite(tex);
+    sprite.position.set(n.x, n.y);
+    sprite.width = n.w;
+    sprite.height = n.h;
+    this.contentLayer.addChild(sprite);
   }
 
   /** Render an embedded image (from a cached texture, loading lazily). */

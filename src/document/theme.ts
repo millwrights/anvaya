@@ -57,6 +57,7 @@ function makeShapes(p: ShapePalette): Shapes {
     sticky: { w: 168, h: 168, style: { fill: p.stickyFill, textColor: p.stickyText, fontSize: 17 } },
     frame: { w: 420, h: 300, style: { fill: p.frameFill, stroke: p.frameStroke, textColor: p.frameText, strokeWidth: 1 } },
     image: { w: 220, h: 160, style: { fill: "#00000000", stroke: p.imageStroke, strokeWidth: 1 } },
+    icon: { w: 64, h: 64, style: {} },
     text: { w: 160, h: 40, style: { fill: "#00000000", stroke: "#00000000" } },
     draw: { w: 100, h: 100, style: { fill: "#00000000", stroke: p.drawStroke, strokeWidth: 2.5 } },
   };
