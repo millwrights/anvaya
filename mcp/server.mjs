@@ -16,6 +16,7 @@ import {
   deleteNode,
   describeDiagram,
   listDiagrams,
+  listIcons,
   readDiagram,
   setNodeColor,
   updateNode,
@@ -35,6 +36,12 @@ const nodeSchema = z.object({
     .optional()
     .describe(
       "start/end -> ellipse; step/process -> rounded; decision -> diamond; note/data -> note; mind-map idea -> topic; default rounded.",
+    ),
+  icon: z
+    .string()
+    .optional()
+    .describe(
+      "Optional icon key from list_icons — renders the node as a labelled product/tech glyph (e.g. 'logos-aws-ec2', 'postgresql', 'carbon-router') with `label` as its caption. When set, `shape` is ignored. Use for software-architecture, cloud, infra and tech-stack diagrams.",
     ),
 });
 const edgeSchema = z.object({
@@ -76,8 +83,24 @@ server.tool(
 );
 
 server.tool(
+  "list_icons",
+  "Browse/search the icon library for node `icon` keys. Use this before building a software-architecture, cloud, infrastructure or tech-stack diagram to find the exact keys (e.g. AWS/Azure/GCP services, databases, languages, frameworks, on-prem/network gear). Filter by free-text `query` and/or `category`; returns matching { key, name, cat } plus the full category list.",
+  {
+    query: z.string().optional().describe("Free-text match on key/name/category, e.g. 'postgres', 'kafka', 'load balancer'."),
+    category: z.string().optional().describe("Exact category, e.g. 'AWS', 'Databases', 'On-Prem', 'Architecture'."),
+  },
+  async (args) => {
+    try {
+      return ok(listIcons(args));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+);
+
+server.tool(
   "create_diagram",
-  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. Returns the created file name.",
+  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. Returns the created file name.",
   {
     title: z.string().describe("Diagram title."),
     nodes: z.array(nodeSchema).min(1).describe("The shapes."),

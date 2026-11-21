@@ -7,6 +7,7 @@ import type {
   SceneNode,
 } from "@/document/types";
 import { shapeDefaults } from "@/document/theme";
+import { iconNodeSize } from "@/document/icons";
 import { fitBox, fitsToText } from "@/document/textfit";
 import { layoutMindmapRight } from "@/layout/mindmap";
 
@@ -483,15 +484,19 @@ export class Commands {
   // ── images ───────────────────────────────────────────────────────────────────
   /** Drop an icon (library SVG or imported SVG markup) centered on (x, y). A
    *  `fill` makes it recolorable (the renderer swaps the icon's currentColor). */
-  createIcon(svg: string, x: number, y: number, size = 64, fill?: string): SceneNode {
+  createIcon(svg: string, x: number, y: number, size = 64, fill?: string, text = ""): SceneNode {
+    const caption = text.trim();
+    // Captioned icons (AI/MCP architecture diagrams) size to glyph + label;
+    // bare icons (picker drop) stay a plain square of `size`.
+    const { w, h } = caption ? iconNodeSize(caption) : { w: Math.round(size), h: Math.round(size) };
     const node: SceneNode = {
       id: nanoid(10),
       shape: "icon",
-      x: Math.round(x - size / 2),
-      y: Math.round(y - size / 2),
-      w: Math.round(size),
-      h: Math.round(size),
-      text: "",
+      x: Math.round(x - w / 2),
+      y: Math.round(y - h / 2),
+      w,
+      h,
+      text: caption,
       parentId: null,
       layoutId: null,
       collapsed: false,

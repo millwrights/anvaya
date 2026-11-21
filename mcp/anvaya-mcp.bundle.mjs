@@ -21432,10 +21432,45 @@ var StdioServerTransport = class {
 };
 
 // anvaya.mjs
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 var ALLOWED_SHAPES = ["rounded", "rect", "ellipse", "diamond", "note", "sticky", "topic"];
+var ICON_CATALOG = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("./icons.json", import.meta.url), "utf8"));
+  } catch {
+    return [];
+  }
+})();
+var ICON_BY_KEY = new Map(ICON_CATALOG.map((i) => [i.key, i]));
+var ICON_GLYPH = 72;
+var ICON_CAP_W = 132;
+var ICON_CAP_LH = 18;
+var ICON_CAP_GAP = 6;
+function iconNodeSize(label) {
+  const t = String(label ?? "").trim();
+  if (!t) return [ICON_GLYPH, ICON_GLYPH];
+  const perLine = Math.max(6, Math.floor(ICON_CAP_W / 7));
+  const lines = Math.min(3, Math.max(1, Math.ceil(t.length / perLine)));
+  return [ICON_CAP_W, ICON_GLYPH + lines * ICON_CAP_LH + ICON_CAP_GAP];
+}
+function listIcons({ query, category } = {}) {
+  const q = String(query ?? "").trim().toLowerCase();
+  const cat = String(category ?? "").trim().toLowerCase();
+  let items = ICON_CATALOG;
+  if (cat) items = items.filter((i) => i.cat.toLowerCase() === cat);
+  if (q)
+    items = items.filter(
+      (i) => i.key.toLowerCase().includes(q) || i.name.toLowerCase().includes(q) || i.cat.toLowerCase().includes(q)
+    );
+  return {
+    categories: [...new Set(ICON_CATALOG.map((i) => i.cat))],
+    total: ICON_CATALOG.length,
+    matched: items.length,
+    icons: items.slice(0, 200).map((i) => ({ key: i.key, name: i.name, cat: i.cat }))
+  };
+}
 var CHAR_W = 8;
 var LINE_H = 20;
 var H_PAD = 20;
@@ -21615,7 +21650,10 @@ function buildRecords(spec, startZ, originX, originY) {
   const idset = new Set(ids);
   const specEdges = (spec.edges ?? []).filter((e) => idset.has(e.from) && idset.has(e.to));
   const sizeMap = /* @__PURE__ */ new Map();
-  for (const n of specNodes) sizeMap.set(n.id, fitSize(shapeOf(n.shape), n.label));
+  for (const n of specNodes) {
+    const ic = n.icon ? ICON_BY_KEY.get(n.icon) : null;
+    sizeMap.set(n.id, ic ? iconNodeSize(n.label) : fitSize(shapeOf(n.shape), n.label));
+  }
   const size = (id) => sizeMap.get(id);
   const back = backEdges(ids, specEdges);
   const forward = specEdges.filter((e) => !back.has(EK(e.from, e.to)));
@@ -21623,16 +21661,14 @@ function buildRecords(spec, startZ, originX, originY) {
   const real = /* @__PURE__ */ new Map();
   let z = startZ;
   const nodes = specNodes.map((n) => {
-    const shape = shapeOf(n.shape);
     const [w, h] = size(n.id);
     const p = pos.get(n.id);
     const cx = originX + p.x;
     const cy = originY + p.y;
     const id = rand();
     real.set(n.id, id);
-    return {
+    const base = {
       id,
-      shape,
       x: Math.round(cx - w / 2),
       y: Math.round(cy - h / 2),
       w,
@@ -21641,9 +21677,13 @@ function buildRecords(spec, startZ, originX, originY) {
       parentId: null,
       layoutId: null,
       collapsed: false,
-      style: {},
       z: z++
     };
+    const ic = n.icon ? ICON_BY_KEY.get(n.icon) : null;
+    if (ic) {
+      return { ...base, shape: "icon", src: ic.svg, style: ic.mono && ic.tint ? { fill: ic.tint } : {} };
+    }
+    return { ...base, shape: shapeOf(n.shape), style: {} };
   });
   let gutterLane = 0;
   const gutterBase = originX + bbox.maxX + 60;
@@ -21759,9 +21799,9 @@ async function updateNode({ name, id, label, shape }) {
   const doc = await readDoc(name);
   const n = (doc.nodes ?? []).find((x) => x.id === id);
   if (!n) throw new Error(`No node "${id}" in ${name}.`);
-  if (shape != null) n.shape = shapeOf(shape);
+  if (shape != null && n.shape !== "icon") n.shape = shapeOf(shape);
   if (label != null) n.text = String(label).slice(0, 200);
-  const [w, h] = fitSize(n.shape, n.text);
+  const [w, h] = n.shape === "icon" ? iconNodeSize(n.text) : fitSize(n.shape, n.text);
   const cx = n.x + n.w / 2;
   const cy = n.y + n.h / 2;
   n.w = w;
@@ -21975,6 +22015,9 @@ var nodeSchema = external_exports.object({
   label: external_exports.string().describe("Short text shown in the shape."),
   shape: external_exports.enum(SHAPES).optional().describe(
     "start/end -> ellipse; step/process -> rounded; decision -> diamond; note/data -> note; mind-map idea -> topic; default rounded."
+  ),
+  icon: external_exports.string().optional().describe(
+    "Optional icon key from list_icons \u2014 renders the node as a labelled product/tech glyph (e.g. 'logos-aws-ec2', 'postgresql', 'carbon-router') with `label` as its caption. When set, `shape` is ignored. Use for software-architecture, cloud, infra and tech-stack diagrams."
   )
 });
 var edgeSchema = external_exports.object({
@@ -22012,8 +22055,23 @@ server.tool(
   }
 );
 server.tool(
+  "list_icons",
+  "Browse/search the icon library for node `icon` keys. Use this before building a software-architecture, cloud, infrastructure or tech-stack diagram to find the exact keys (e.g. AWS/Azure/GCP services, databases, languages, frameworks, on-prem/network gear). Filter by free-text `query` and/or `category`; returns matching { key, name, cat } plus the full category list.",
+  {
+    query: external_exports.string().optional().describe("Free-text match on key/name/category, e.g. 'postgres', 'kafka', 'load balancer'."),
+    category: external_exports.string().optional().describe("Exact category, e.g. 'AWS', 'Databases', 'On-Prem', 'Architecture'.")
+  },
+  async (args) => {
+    try {
+      return ok(listIcons(args));
+    } catch (e) {
+      return fail(e);
+    }
+  }
+);
+server.tool(
   "create_diagram",
-  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. Returns the created file name.",
+  "Create a NEW diagram from a graph of nodes and edges. Shapes are auto-sized to their text, auto-laid-out top-down, and colored by the app. Keep flow-node labels concise; to add detail, attach a few 'note' shapes with a short one-line description to the important steps (mind-map style) instead of writing long labels. For software-architecture / cloud / infra diagrams, set a node's `icon` (a key from list_icons) to render it as a labelled product/tech glyph instead of a plain box. Returns the created file name.",
   {
     title: external_exports.string().describe("Diagram title."),
     nodes: external_exports.array(nodeSchema).min(1).describe("The shapes."),

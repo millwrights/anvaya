@@ -6,6 +6,7 @@ import type { CanvasEngine } from "@/canvas/CanvasEngine";
 import { commands, doc } from "@/app/session";
 import type { NodeShape } from "@/document/types";
 import { fitBox } from "@/document/textfit";
+import { ICON_BY_KEY, ICON_PROMPT_CATALOG, ICON_GLYPH, iconNodeSize } from "@/document/icons";
 import { chat } from "./provider";
 import { parseMermaid } from "./mermaid";
 import { backEdges, edgeKey, layoutGraph } from "./layout";
@@ -17,6 +18,7 @@ interface SpecNode {
   id: string;
   label: string;
   shape?: string;
+  icon?: string;
 }
 interface SpecEdge {
   from: string;
@@ -34,7 +36,7 @@ export const SYSTEM_PROMPT = `You are a diagramming assistant for a visual-think
 Schema:
 {
   "title": string,                       // short title for the diagram
-  "nodes": [ { "id": string, "label": string, "shape": string } ],
+  "nodes": [ { "id": string, "label": string, "shape": string, "icon": string } ],
   "edges": [ { "from": string, "to": string, "label": string } ]  // label optional
 }
 
@@ -43,6 +45,8 @@ Rules:
 - Choose "shape" by meaning: start/end -> "ellipse"; a step/process -> "rounded"; a decision/branch -> "diamond"; a note/data -> "note"; a mind-map idea -> "topic"; default -> "rounded".
 - Keep the labels on flow nodes concise (a few words). For decision branches, put "Yes"/"No" (etc.) on the edge label.
 - Add helpful detail mind-map style: for the important steps, add a separate "note" node holding a short one-line description or example, connected to that step. These annotations sit outside the main boxes and enrich the diagram — include a few, but don't clutter every node.
+- ICONS: for software-architecture, cloud, infrastructure or tech-stack diagrams, set "icon" on a node to represent it as a labelled product/technology glyph instead of a plain box. Use the node's "label" as its caption (e.g. "Postgres", "Orders API", "Load Balancer"). When "icon" is set, omit "shape". Only use an icon key from this catalog; if nothing fits, use a plain shape instead:
+${ICON_PROMPT_CATALOG}
 - Produce a connected graph. Return ONLY the JSON object.`;
 
 /** Pull the JSON object out of a model reply (tolerates code fences / stray text). */
@@ -100,9 +104,21 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
   const idset = new Set(ids);
   const edges = spec.edges.filter((e) => idset.has(e.from) && idset.has(e.to));
 
+  // Resolve icon keys up front; a node with a valid icon becomes an icon glyph.
+  const iconOf = new Map<string, { svg: string; tint?: string }>();
+  for (const n of spec.nodes) {
+    if (!n.icon) continue;
+    const def = ICON_BY_KEY.get(n.icon);
+    if (def) iconOf.set(n.id, { svg: def.svg, tint: def.mono ? def.tint : undefined });
+  }
+
   // Pre-measure each node's box so the layout leaves room for its text.
   const dims = new Map<string, { w: number; h: number }>();
   for (const n of spec.nodes) {
+    if (iconOf.has(n.id)) {
+      dims.set(n.id, iconNodeSize(n.label));
+      continue;
+    }
     const fit = fitBox(shapeOf(n.shape), {}, n.label ?? "");
     dims.set(n.id, fit ?? { w: 150, h: 64 });
   }
@@ -123,12 +139,11 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
   doc.transact(() => {
     for (const n of spec.nodes) {
       const p = pos.get(n.id)!;
-      const node = commands.createNode({
-        shape: shapeOf(n.shape),
-        x: cx + p.x,
-        y: cy + p.y,
-        text: (n.label ?? "").slice(0, 200),
-      });
+      const label = (n.label ?? "").slice(0, 200);
+      const ic = iconOf.get(n.id);
+      const node = ic
+        ? commands.createIcon(ic.svg, cx + p.x, cy + p.y, ICON_GLYPH, ic.tint, label)
+        : commands.createNode({ shape: shapeOf(n.shape), x: cx + p.x, y: cy + p.y, text: label });
       real.set(n.id, node.id);
     }
     let lane = 0;

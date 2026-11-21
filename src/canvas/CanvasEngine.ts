@@ -14,6 +14,7 @@ import type { AnvayaDoc } from "@/document/doc";
 import type { Commands } from "@/commands/commands";
 import type { EdgeRouting, NodeShape, NodeStyle, SceneEdge, SceneNode } from "@/document/types";
 import { fontStack, onThemeChange, readableText, resolveStyle, shapeDefaults, theme } from "@/document/theme";
+import { ICON_GLYPH } from "@/document/icons";
 import { Camera, type Point } from "@/render/camera";
 
 export type Tool =
@@ -633,7 +634,18 @@ export class CanvasEngine {
       const fill = s.fill && s.fill !== "#00000000" ? s.fill : "#1a1d23";
       const colored = n.src.includes("currentColor") ? n.src.replace(/currentColor/g, fill) : n.src;
       const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
-      return `<image href="${esc(uri)}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}"/>`;
+      const caption = n.text.trim();
+      if (!caption) {
+        return `<image href="${esc(uri)}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}"/>`;
+      }
+      const glyph = Math.max(16, Math.min(n.w, ICON_GLYPH, n.h - ICON_GLYPH * 0.25));
+      const gx = n.x + (n.w - glyph) / 2;
+      const cy = n.y + glyph + 4 + 13; // baseline of first caption line
+      return (
+        `<image href="${esc(uri)}" x="${gx}" y="${n.y}" width="${glyph}" height="${glyph}"/>` +
+        `<text x="${n.x + n.w / 2}" y="${cy}" text-anchor="middle" font-family="-apple-system, sans-serif" ` +
+        `font-size="13" font-weight="600" fill="${theme.text}">${esc(caption)}</text>`
+      );
     }
     let shape = "";
     if (n.shape !== "text") {
@@ -844,6 +856,10 @@ export class CanvasEngine {
    *  texture (crisp at normal zoom, loads lazily like an image). */
   private drawIconNode(n: SceneNode) {
     if (!n.src) return;
+    const caption = this.editingId === n.id ? "" : n.text.trim();
+    // Captioned icons (from the AI/MCP builders) reserve a square glyph on top and
+    // draw the label beneath; bare icons (dropped from the picker) fill the box.
+    const glyph = caption ? Math.max(16, Math.min(n.w, ICON_GLYPH, n.h - ICON_GLYPH * 0.25)) : 0;
     const fill = n.style.fill || "#e8ebf0";
     const colored = n.src.includes("currentColor") ? n.src.replace(/currentColor/g, fill) : n.src;
     const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
@@ -855,13 +871,38 @@ export class CanvasEngine {
         this.markScene();
       };
       img.src = uri;
-      return;
+    } else {
+      const sprite = new Sprite(tex);
+      if (caption) {
+        sprite.width = glyph;
+        sprite.height = glyph;
+        sprite.position.set(n.x + (n.w - glyph) / 2, n.y);
+      } else {
+        sprite.width = n.w;
+        sprite.height = n.h;
+        sprite.position.set(n.x, n.y);
+      }
+      this.contentLayer.addChild(sprite);
     }
-    const sprite = new Sprite(tex);
-    sprite.position.set(n.x, n.y);
-    sprite.width = n.w;
-    sprite.height = n.h;
-    this.contentLayer.addChild(sprite);
+    if (caption) {
+      const t = new Text({
+        text: caption,
+        style: new TextStyle({
+          fill: theme.text,
+          fontSize: 13,
+          fontWeight: "600",
+          letterSpacing: 0.1,
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          align: "center",
+          wordWrap: true,
+          wordWrapWidth: n.w,
+        }),
+      });
+      t.resolution = this.textRes();
+      t.anchor.set(0.5, 0);
+      t.position.set(n.x + n.w / 2, n.y + glyph + 4);
+      this.contentLayer.addChild(t);
+    }
   }
 
   /** Render an embedded image (from a cached texture, loading lazily). */
