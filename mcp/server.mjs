@@ -121,6 +121,12 @@ server.tool(
     edges: z.array(edgeSchema).default([]).describe("The connections between node ids."),
     folder: z.string().optional().describe("Optional folder path, e.g. Work/Auth."),
     tags: z.array(z.string()).optional().describe("Optional tags for search."),
+    mode: z
+      .enum(["canvas", "mindmap", "infographic", "sketch"])
+      .optional()
+      .describe(
+        'How the diagram is visualized: "canvas" (free, default), "mindmap" (auto tree), "infographic" (bold icon cards + accent blocks), or "sketch" (hand-drawn look).',
+      ),
   },
   async (args) => {
     try {

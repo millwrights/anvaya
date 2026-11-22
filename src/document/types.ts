@@ -144,6 +144,12 @@ export interface AnvayaDocument {
   folder?: string;
   /** Free-form tags for searching/filtering. */
   tags?: string[];
+  /**
+   * How this diagram is visualized: "canvas" | "mindmap" | "infographic" |
+   * "sketch" (see document/modes.ts). Absent → "canvas". A mode is a preset of
+   * layout + paint style over the same nodes/edges.
+   */
+  mode?: string;
   nodes: SceneNode[];
   edges: SceneEdge[];
   layouts: LayoutRecord[];

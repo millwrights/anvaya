@@ -16,7 +16,18 @@ import type { EdgeRouting, NodeShape, NodeStyle, SceneEdge, SceneNode } from "@/
 import { edgeHasDetail } from "@/document/types";
 import { fontStack, onThemeChange, readableText, resolveStyle, shapeDefaults, theme } from "@/document/theme";
 import { ICON_GLYPH } from "@/document/icons";
+import { modePreset, renderStyleOf, type RenderStyle } from "@/document/modes";
+import { hashStr, inkColor, jitterLine, ptsAttr, sketchOutline, type Pt } from "@/canvas/sketch";
 import { Camera, type Point } from "@/render/camera";
+
+// The marker/handwriting font stack used for SketchNotes mode (matches the
+// "marker" key in theme.ts FONT_FAMILIES).
+const SKETCH_FONT = "'Marker Felt', 'Comic Sans MS', 'Segoe Print', cursive";
+
+/** Order-independent key for a pair of node ids. */
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
+}
 
 export type Tool =
   | "select"
@@ -186,6 +197,88 @@ export class CanvasEngine {
     this.app.renderer.background.color = theme.canvasBg;
     this.markCamera();
     this.markScene();
+  }
+
+  /** The active paint style, derived from the document's visualization mode. */
+  private renderStyle(): RenderStyle {
+    return renderStyleOf(this.doc.mode());
+  }
+
+  /** The current visualization mode (see document/modes.ts). */
+  getMode(): string {
+    return this.doc.mode();
+  }
+
+  /**
+   * Switch the diagram's visualization mode. This re-skins the same nodes and
+   * edges — it never rebuilds them. MindMap mode additionally arranges the
+   * content as a tree (reflowing an existing one, or deriving one from edges).
+   */
+  setMode(mode: string) {
+    if (this.doc.mode() === mode) return;
+    this.doc.setMode(mode);
+    if (modePreset(mode).layout === "mindmap") this.ensureMindmap();
+    this.markScene();
+    this.emit();
+  }
+
+  /** Ensure there is a mind-map layout and reflow it (builds one if needed). */
+  private ensureMindmap() {
+    const nodes = this.doc.allNodes().filter((n) => n.shape !== "frame");
+    if (!nodes.length) return;
+    const existing = nodes.find((n) => n.layoutId);
+    if (existing?.layoutId) {
+      this.cmd.reflowLayout(existing.layoutId);
+      return;
+    }
+    // Derive a tree: BFS over edges from the best root (no incoming edges,
+    // most outgoing). Unreached nodes stay where they are.
+    const edges = this.doc.allEdges();
+    const adj = new Map<string, string[]>();
+    const indeg = new Map<string, number>();
+    for (const n of nodes) {
+      adj.set(n.id, []);
+      indeg.set(n.id, 0);
+    }
+    for (const e of edges) {
+      if (!adj.has(e.source) || !adj.has(e.target)) continue;
+      adj.get(e.source)!.push(e.target);
+      indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1);
+    }
+    let root = nodes[0];
+    let best = -1;
+    for (const n of nodes) {
+      const score = (indeg.get(n.id) === 0 ? 1000 : 0) + adj.get(n.id)!.length;
+      if (score > best) {
+        best = score;
+        root = n;
+      }
+    }
+    // Attach a layout WITHOUT changing the root's shape (makeMindmapRoot would
+    // force it to a "topic" and destroy an icon/image root). MindMap mode only
+    // rearranges — it never rewrites what a node is.
+    const layoutId = `ml_${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+    this.doc.putLayout({ id: layoutId, rootId: root.id, algorithm: "mindmap-right", params: {} });
+    this.doc.updateNode(root.id, { layoutId });
+    const seen = new Set<string>([root.id]);
+    const queue = [root.id];
+    while (queue.length) {
+      const pid = queue.shift()!;
+      for (const cid of adj.get(pid) ?? []) {
+        if (seen.has(cid)) continue;
+        seen.add(cid);
+        this.doc.updateNode(cid, { parentId: pid, layoutId });
+        queue.push(cid);
+      }
+    }
+    this.cmd.reflowLayout(layoutId);
+  }
+
+  /** A vivid accent color for a node in infographic mode. */
+  private nodeAccent(n: SceneNode, s: NodeStyle): string {
+    if (s.stroke && s.stroke !== "#00000000" && s.strokeWidth !== 0) return s.stroke;
+    const palette = ["#2e9bff", "#34e668", "#ffab24", "#cf74ff", "#ff5a4a", "#5ce0ff"];
+    return palette[hashStr(n.id) % palette.length];
   }
 
   destroy() {
@@ -492,11 +585,13 @@ export class CanvasEngine {
     const byId = new Map(nodes.map((n) => [n.id, n]));
 
     // Mind-map branches: implicit parent→child connectors (drawn from the tree
-    // structure, not from explicit edges). Always at the very back.
+    // structure, not from explicit edges). Always at the very back. A pair that
+    // already has an explicit (labeled) edge is skipped so the two don't double.
+    const explicitPairs = this.explicitEdgePairs();
     for (const n of nodes) {
       if (n.parentId && n.layoutId) {
         const p = byId.get(n.parentId);
-        if (p) this.drawBranch(p, n);
+        if (p && !explicitPairs.has(pairKey(n.parentId, n.id))) this.drawBranch(p, n);
       }
     }
     // Frames always render behind everything else (they're sections/containers).
@@ -599,10 +694,11 @@ export class CanvasEngine {
     const out: string[] = [];
     // No background fill — the SVG is transparent so it drops onto any surface.
     // mind-map branches (behind), then frames, then edges + nodes by z.
+    const explicitPairs = this.explicitEdgePairs();
     for (const n of nodes) {
       if (n.parentId && n.layoutId) {
         const p = byId.get(n.parentId);
-        if (p) out.push(this.branchSVG(p, n));
+        if (p && !explicitPairs.has(pairKey(n.parentId, n.id))) out.push(this.branchSVG(p, n));
       }
     }
     for (const n of nodes.slice().sort((a, b) => a.z - b.z))
@@ -726,24 +822,51 @@ export class CanvasEngine {
       const glyph = Math.max(16, Math.min(n.w, ICON_GLYPH, n.h - ICON_GLYPH * 0.25));
       const gx = n.x + (n.w - glyph) / 2;
       const cy = n.y + glyph + 4 + 13; // baseline of first caption line
+      const rs = this.renderStyle();
+      let card = "";
+      if (rs === "infographic") {
+        card = `<rect x="${n.x - 8}" y="${n.y - 8}" width="${n.w + 16}" height="${n.h + 16}" rx="12" fill="#ffffff" fill-opacity="0.05" stroke="${this.nodeAccent(n, s)}" stroke-width="1.5"/>`;
+      } else if (rs === "sketch") {
+        const pts = sketchOutline("rounded", n.x - 8, n.y - 8, n.w + 16, n.h + 16, hashStr(n.id), 2.2);
+        card = `<polygon points="${ptsAttr(pts)}" fill="none" stroke="${inkColor(theme.canvasBg)}" stroke-width="1.6" stroke-linejoin="round"/>`;
+      }
+      const capFont = rs === "sketch" ? SKETCH_FONT : "-apple-system, sans-serif";
+      const capFill = rs === "sketch" ? inkColor(theme.canvasBg) : theme.text;
       return (
+        card +
         `<image href="${esc(uri)}" x="${gx}" y="${n.y}" width="${glyph}" height="${glyph}"/>` +
-        `<text x="${n.x + n.w / 2}" y="${cy}" text-anchor="middle" font-family="-apple-system, sans-serif" ` +
-        `font-size="13" font-weight="600" fill="${theme.text}">${esc(caption)}</text>`
+        `<text x="${n.x + n.w / 2}" y="${cy}" text-anchor="middle" font-family="${esc(capFont)}" ` +
+        `font-size="13" font-weight="${rs === "infographic" ? 700 : 600}" fill="${capFill}">${esc(caption)}</text>`
       );
     }
     let shape = "";
     if (n.shape !== "text") {
-      const stroke =
-        s.strokeWidth > 0 && s.stroke && s.stroke !== "#00000000"
-          ? `stroke="${s.stroke}" stroke-width="${s.strokeWidth}"`
-          : `stroke="none"`;
-      if (n.shape === "ellipse")
-        shape = `<ellipse cx="${n.x + n.w / 2}" cy="${n.y + n.h / 2}" rx="${n.w / 2}" ry="${n.h / 2}" fill="${s.fill}" ${stroke}/>`;
-      else if (n.shape === "diamond")
-        shape = `<polygon points="${n.x + n.w / 2},${n.y} ${n.x + n.w},${n.y + n.h / 2} ${n.x + n.w / 2},${n.y + n.h} ${n.x},${n.y + n.h / 2}" fill="${s.fill}" ${stroke}/>`;
-      else
-        shape = `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${this.cornerRadius(n.shape)}" fill="${s.fill}" ${stroke}/>`;
+      const rs = this.renderStyle();
+      if (rs === "sketch") {
+        const ink = inkColor(theme.canvasBg);
+        const seed = hashStr(n.id);
+        const outer = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed, 2.4);
+        const inner = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed ^ 0x9e3779b9, 1.7);
+        shape =
+          `<polygon points="${ptsAttr(outer)}" fill="${s.fill}" fill-opacity="0.92" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/>` +
+          `<polygon points="${ptsAttr(inner)}" fill="none" stroke="${ink}" stroke-width="0.8" stroke-opacity="0.45" stroke-linejoin="round"/>`;
+      } else if (rs === "infographic") {
+        const accent = this.nodeAccent(n, s);
+        shape =
+          `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="14" fill="${s.fill}"/>` +
+          `<rect x="${n.x}" y="${n.y}" width="7" height="${n.h}" rx="3" fill="${accent}"/>`;
+      } else {
+        const stroke =
+          s.strokeWidth > 0 && s.stroke && s.stroke !== "#00000000"
+            ? `stroke="${s.stroke}" stroke-width="${s.strokeWidth}"`
+            : `stroke="none"`;
+        if (n.shape === "ellipse")
+          shape = `<ellipse cx="${n.x + n.w / 2}" cy="${n.y + n.h / 2}" rx="${n.w / 2}" ry="${n.h / 2}" fill="${s.fill}" ${stroke}/>`;
+        else if (n.shape === "diamond")
+          shape = `<polygon points="${n.x + n.w / 2},${n.y} ${n.x + n.w},${n.y + n.h / 2} ${n.x + n.w / 2},${n.y + n.h} ${n.x},${n.y + n.h / 2}" fill="${s.fill}" ${stroke}/>`;
+        else
+          shape = `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${this.cornerRadius(n.shape)}" fill="${s.fill}" ${stroke}/>`;
+      }
     }
     const label = n.text.trim();
     return shape + (label ? this.textSVG(n, s, label) : "");
@@ -761,20 +884,29 @@ export class CanvasEngine {
     const tspans = lines
       .map((ln, i) => `<tspan x="${x}" y="${top + i * lh}">${esc(ln)}</tspan>`)
       .join("");
+    const rs = this.renderStyle();
+    const family = rs === "sketch" ? SKETCH_FONT : fontStack(s.fontFamily);
+    const weight = s.bold || rs === "infographic" ? 700 : 500;
+    const fill =
+      rs === "sketch" && !n.text.trim() ? inkColor(theme.canvasBg) : readableText(s.textColor, s.fill);
     return (
       `<text text-anchor="${anchor}" dominant-baseline="central" ` +
-      `font-family="${esc(fontStack(s.fontFamily))}" font-size="${s.fontSize}" ` +
-      `font-weight="${s.bold ? 700 : 500}" font-style="${s.italic ? "italic" : "normal"}" ` +
-      `fill="${readableText(s.textColor, s.fill)}"${deco ? ` text-decoration="${deco}"` : ""}>${tspans}</text>`
+      `font-family="${esc(family)}" font-size="${s.fontSize}" ` +
+      `font-weight="${weight}" font-style="${s.italic ? "italic" : "normal"}" ` +
+      `fill="${fill}"${deco ? ` text-decoration="${deco}"` : ""}>${tspans}</text>`
     );
   }
 
   private edgeSVG(e: SceneEdge, byId: Map<string, SceneNode>): string {
     const pts = this.edgePoints(e, byId);
     if (!pts) return "";
-    const color = e.style.stroke ?? hex(e.kind === "flow" ? theme.edgeFlow : theme.edge);
-    const width = e.style.width ?? 2;
-    const poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
+    const rs = this.renderStyle();
+    const color =
+      e.style.stroke ??
+      (rs === "sketch" ? inkColor(theme.canvasBg) : hex(e.kind === "flow" ? theme.edgeFlow : theme.edge));
+    const width = e.style.width ?? (rs === "sketch" ? 1.8 : 2);
+    let poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
+    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id), 1.4);
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
@@ -811,7 +943,7 @@ export class CanvasEngine {
         `<rect x="${mid.x - w / 2}" y="${mid.y - 10}" width="${w}" height="20" rx="5" fill="${hex(theme.canvasBg)}" fill-opacity="0.92"/>`,
       );
       parts.push(
-        `<text x="${mid.x}" y="${mid.y}" text-anchor="middle" dominant-baseline="central" font-family="-apple-system, sans-serif" font-size="12" fill="${theme.text}">${esc(e.label)}</text>`,
+        `<text x="${mid.x}" y="${mid.y}" text-anchor="middle" dominant-baseline="central" font-family="${esc(rs === "sketch" ? SKETCH_FONT : "-apple-system, sans-serif")}" font-size="12" fill="${rs === "sketch" ? inkColor(theme.canvasBg) : theme.text}">${esc(e.label)}</text>`,
       );
     }
     return parts.join("");
@@ -835,50 +967,38 @@ export class CanvasEngine {
       return;
     }
 
+    const rs = this.renderStyle();
+
     // "text" nodes are label-only (no box).
     if (n.shape !== "text") {
-      const r = this.cornerRadius(n.shape);
-      // Soft drop shadow for depth (layered low-alpha fills fake a blur, cheaply).
-      if (n.shadow !== false) {
-        const inv = 1 / this.camera.zoom;
-        for (const L of [
-          { dy: 8 * inv, sp: 5 * inv, a: 0.05 },
-          { dy: 4 * inv, sp: 2.5 * inv, a: 0.07 },
-          { dy: 1.5 * inv, sp: 0.5 * inv, a: 0.08 },
-        ]) {
-          const sh = new Graphics();
-          this.shapePath(sh, n.shape, n.x - L.sp, n.y + L.dy, n.w + L.sp * 2, n.h, r);
-          sh.fill({ color: 0x000000, alpha: L.a });
-          this.contentLayer.addChild(sh);
-        }
-      }
-      const g = new Graphics();
-      this.shapePath(g, n.shape, n.x, n.y, n.w, n.h, r);
-      g.fill(s.fill);
-      // Border only when the user has set one (borderless by default).
-      if (s.strokeWidth > 0 && s.stroke && s.stroke !== "#00000000") {
-        g.stroke({ color: s.stroke, width: s.strokeWidth });
-      }
-      this.contentLayer.addChild(g);
+      if (rs === "sketch") this.drawSketchBox(n, s);
+      else if (rs === "infographic") this.drawInfographicBox(n, s);
+      else this.drawCleanBox(n, s);
     }
 
     const placeholder =
       n.shape === "topic" ? "Topic" : n.shape === "text" ? "Text" : n.shape === "sticky" ? "Note" : "";
     const label = this.editingId === n.id ? "" : n.text.trim() || placeholder;
     if (label) {
-      const col = n.text.trim() ? readableText(s.textColor, s.fill) : theme.edge;
+      const col =
+        rs === "sketch" && !n.text.trim()
+          ? inkColor(theme.canvasBg)
+          : n.text.trim()
+            ? readableText(s.textColor, s.fill)
+            : theme.edge;
       const align = s.align ?? "center";
       const ax = align === "left" ? 0 : align === "right" ? 1 : 0.5;
       const pad = 10;
+      const family = rs === "sketch" ? SKETCH_FONT : fontStack(s.fontFamily);
       const t = new Text({
         text: label,
         style: new TextStyle({
           fill: col,
           fontSize: s.fontSize,
-          fontWeight: s.bold ? "700" : "500",
+          fontWeight: s.bold || rs === "infographic" ? "700" : "500",
           fontStyle: s.italic ? "italic" : "normal",
           letterSpacing: 0.1,
-          fontFamily: fontStack(s.fontFamily),
+          fontFamily: family,
           align,
           wordWrap: true,
           wordWrapWidth: n.w - pad * 2,
@@ -903,6 +1023,68 @@ export class CanvasEngine {
         this.contentLayer.addChild(dec);
       }
     }
+  }
+
+  /** Clean (default) box: soft drop shadow, fill, optional border. */
+  private drawCleanBox(n: SceneNode, s: NodeStyle) {
+    const r = this.cornerRadius(n.shape);
+    if (n.shadow !== false) {
+      const inv = 1 / this.camera.zoom;
+      for (const L of [
+        { dy: 8 * inv, sp: 5 * inv, a: 0.05 },
+        { dy: 4 * inv, sp: 2.5 * inv, a: 0.07 },
+        { dy: 1.5 * inv, sp: 0.5 * inv, a: 0.08 },
+      ]) {
+        const sh = new Graphics();
+        this.shapePath(sh, n.shape, n.x - L.sp, n.y + L.dy, n.w + L.sp * 2, n.h, r);
+        sh.fill({ color: 0x000000, alpha: L.a });
+        this.contentLayer.addChild(sh);
+      }
+    }
+    const g = new Graphics();
+    this.shapePath(g, n.shape, n.x, n.y, n.w, n.h, r);
+    g.fill(s.fill);
+    if (s.strokeWidth > 0 && s.stroke && s.stroke !== "#00000000") {
+      g.stroke({ color: s.stroke, width: s.strokeWidth });
+    }
+    this.contentLayer.addChild(g);
+  }
+
+  /** Sketch box: a wobbly hand-drawn outline (double-stroked) over the fill. */
+  private drawSketchBox(n: SceneNode, s: NodeStyle) {
+    const ink = inkColor(theme.canvasBg);
+    const seed = hashStr(n.id);
+    const flat = (pts: Pt[]) => pts.flatMap((p) => [p.x, p.y]);
+    const outer = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed, 2.4);
+    const g = new Graphics();
+    g.poly(flat(outer));
+    g.fill({ color: s.fill, alpha: 0.92 });
+    g.stroke({ color: ink, width: 1.8, cap: "round", join: "round" });
+    this.contentLayer.addChild(g);
+    // A second, lighter pass offset slightly gives the double-line sketch feel.
+    const inner = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed ^ 0x9e3779b9, 1.7);
+    const g2 = new Graphics();
+    g2.poly(flat(inner));
+    g2.stroke({ color: ink, width: 0.8, alpha: 0.45, cap: "round", join: "round" });
+    this.contentLayer.addChild(g2);
+  }
+
+  /** Infographic box: a flat panel with a bold left accent stripe. */
+  private drawInfographicBox(n: SceneNode, s: NodeStyle) {
+    const r = 14;
+    const accent = this.nodeAccent(n, s);
+    const g = new Graphics();
+    g.roundRect(n.x, n.y, n.w, n.h, r).fill(s.fill);
+    this.contentLayer.addChild(g);
+    const bar = new Graphics();
+    bar.roundRect(n.x, n.y, 7, n.h, r);
+    bar.fill(accent);
+    // Clip the stripe to the panel so its right corners stay square-ish inside.
+    const mask = new Graphics();
+    mask.roundRect(n.x, n.y, n.w, n.h, r).fill(0xffffff);
+    bar.mask = mask;
+    this.contentLayer.addChild(mask);
+    this.contentLayer.addChild(bar);
   }
 
   private cornerRadius(shape: SceneNode["shape"]): number {
@@ -945,6 +1127,25 @@ export class CanvasEngine {
     // Captioned icons (from the AI/MCP builders) reserve a square glyph on top and
     // draw the label beneath; bare icons (dropped from the picker) fill the box.
     const glyph = caption ? Math.max(16, Math.min(n.w, ICON_GLYPH, n.h - ICON_GLYPH * 0.25)) : 0;
+    // In infographic/sketch modes a captioned icon becomes a "card": a panel or a
+    // hand-drawn outline framing the glyph + label.
+    const rs = this.renderStyle();
+    if (caption && rs === "infographic") {
+      const accent = this.nodeAccent(n, resolveStyle("icon", n.style));
+      const card = new Graphics();
+      card
+        .roundRect(n.x - 8, n.y - 8, n.w + 16, n.h + 16, 12)
+        .fill({ color: 0xffffff, alpha: 0.05 })
+        .stroke({ color: accent, width: 1.5 });
+      this.contentLayer.addChild(card);
+    } else if (caption && rs === "sketch") {
+      const ink = inkColor(theme.canvasBg);
+      const pts = sketchOutline("rounded", n.x - 8, n.y - 8, n.w + 16, n.h + 16, hashStr(n.id), 2.2);
+      const g = new Graphics();
+      g.poly(pts.flatMap((p) => [p.x, p.y]));
+      g.stroke({ color: ink, width: 1.6, cap: "round", join: "round" });
+      this.contentLayer.addChild(g);
+    }
     const fill = n.style.fill || "#e8ebf0";
     const colored = n.src.includes("currentColor") ? n.src.replace(/currentColor/g, fill) : n.src;
     const uri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(colored);
@@ -973,11 +1174,11 @@ export class CanvasEngine {
       const t = new Text({
         text: caption,
         style: new TextStyle({
-          fill: theme.text,
+          fill: rs === "sketch" ? inkColor(theme.canvasBg) : theme.text,
           fontSize: 13,
-          fontWeight: "600",
+          fontWeight: rs === "infographic" ? "700" : "600",
           letterSpacing: 0.1,
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          fontFamily: rs === "sketch" ? SKETCH_FONT : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           align: "center",
           wordWrap: true,
           wordWrapWidth: n.w,
@@ -1138,6 +1339,15 @@ export class CanvasEngine {
   }
 
   /** A smooth mind-map branch from parent's right side to child's left side. */
+  /** Unordered node-pair keys for every explicit edge, to dedupe branch curves. */
+  private explicitEdgePairs(): Set<string> {
+    const set = new Set<string>();
+    for (const e of this.doc.allEdges()) {
+      if (e.source && e.target) set.add(pairKey(e.source, e.target));
+    }
+    return set;
+  }
+
   private drawBranch(parent: SceneNode, child: SceneNode) {
     const x1 = parent.x + parent.w;
     const y1 = parent.y + parent.h / 2;
@@ -1303,9 +1513,13 @@ export class CanvasEngine {
   private drawEdge(e: SceneEdge, byId: Map<string, SceneNode>) {
     const pts = this.edgePoints(e, byId);
     if (!pts) return;
-    const color = e.style.stroke ?? (e.kind === "flow" ? theme.edgeFlow : theme.edge);
-    const width = e.style.width ?? 2;
-    const poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
+    const rs = this.renderStyle();
+    const color =
+      e.style.stroke ??
+      (rs === "sketch" ? inkColor(theme.canvasBg) : e.kind === "flow" ? theme.edgeFlow : theme.edge);
+    const width = e.style.width ?? (rs === "sketch" ? 1.8 : 2);
+    let poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
+    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id), 1.4);
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
@@ -1345,9 +1559,9 @@ export class CanvasEngine {
       const t = new Text({
         text: e.label,
         style: new TextStyle({
-          fill: theme.text,
+          fill: rs === "sketch" ? inkColor(theme.canvasBg) : theme.text,
           fontSize: 12,
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          fontFamily: rs === "sketch" ? SKETCH_FONT : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         }),
       });
       t.resolution = this.textRes();

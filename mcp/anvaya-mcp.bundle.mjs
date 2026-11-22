@@ -21797,7 +21797,8 @@ async function readDiagram(name) {
     }))
   };
 }
-async function createDiagram({ title, nodes, edges, folder, tags }) {
+var MODES = ["canvas", "mindmap", "infographic", "sketch"];
+async function createDiagram({ title, nodes, edges, folder, tags, mode }) {
   const { nodes: nodeRecs, edges: edgeRecs } = buildRecords({ nodes, edges }, 1, 0, 0);
   const doc = {
     schema: "anvaya/diagram@1",
@@ -21805,6 +21806,7 @@ async function createDiagram({ title, nodes, edges, folder, tags }) {
     title: title || "Untitled",
     folder: folder ?? "",
     tags: tags ?? [],
+    mode: MODES.includes(mode) ? mode : "canvas",
     nodes: nodeRecs,
     edges: edgeRecs,
     layouts: []
@@ -22115,7 +22117,10 @@ server.tool(
     nodes: external_exports.array(nodeSchema).min(1).describe("The shapes."),
     edges: external_exports.array(edgeSchema).default([]).describe("The connections between node ids."),
     folder: external_exports.string().optional().describe("Optional folder path, e.g. Work/Auth."),
-    tags: external_exports.array(external_exports.string()).optional().describe("Optional tags for search.")
+    tags: external_exports.array(external_exports.string()).optional().describe("Optional tags for search."),
+    mode: external_exports.enum(["canvas", "mindmap", "infographic", "sketch"]).optional().describe(
+      'How the diagram is visualized: "canvas" (free, default), "mindmap" (auto tree), "infographic" (bold icon cards + accent blocks), or "sketch" (hand-drawn look).'
+    )
   },
   async (args) => {
     try {

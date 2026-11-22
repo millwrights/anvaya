@@ -440,7 +440,9 @@ export async function readDiagram(name) {
   };
 }
 
-export async function createDiagram({ title, nodes, edges, folder, tags }) {
+const MODES = ["canvas", "mindmap", "infographic", "sketch"];
+
+export async function createDiagram({ title, nodes, edges, folder, tags, mode }) {
   const { nodes: nodeRecs, edges: edgeRecs } = buildRecords({ nodes, edges }, 1, 0, 0);
   const doc = {
     schema: "anvaya/diagram@1",
@@ -448,6 +450,7 @@ export async function createDiagram({ title, nodes, edges, folder, tags }) {
     title: title || "Untitled",
     folder: folder ?? "",
     tags: tags ?? [],
+    mode: MODES.includes(mode) ? mode : "canvas",
     nodes: nodeRecs,
     edges: edgeRecs,
     layouts: [],

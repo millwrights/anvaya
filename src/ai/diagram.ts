@@ -7,6 +7,7 @@ import { commands, doc } from "@/app/session";
 import type { NodeShape } from "@/document/types";
 import { fitBox } from "@/document/textfit";
 import { ICON_BY_KEY, ICON_PROMPT_CATALOG, ICON_GLYPH, iconNodeSize } from "@/document/icons";
+import { MODE_LIST } from "@/document/modes";
 import { chat } from "./provider";
 import { parseMermaid } from "./mermaid";
 import { backEdges, edgeKey, layoutGraph } from "./layout";
@@ -28,6 +29,7 @@ interface SpecEdge {
 }
 interface DiagramSpec {
   title?: string;
+  mode?: string;
   nodes: SpecNode[];
   edges: SpecEdge[];
 }
@@ -37,6 +39,7 @@ export const SYSTEM_PROMPT = `You are a diagramming assistant for a visual-think
 Schema:
 {
   "title": string,                       // short title for the diagram
+  "mode": string,                        // optional: "canvas" | "mindmap" | "infographic" | "sketch"
   "nodes": [ { "id": string, "label": string, "shape": string, "icon": string } ],
   "edges": [ { "from": string, "to": string, "label": string, "detail": { "fields": [{ "k": string, "v": string }], "notes": string } } ]  // label and detail optional
 }
@@ -49,6 +52,7 @@ Rules:
 - Add helpful detail mind-map style: for the important steps, add a separate "note" node holding a short one-line description or example, connected to that step. These annotations sit outside the main boxes and enrich the diagram — include a few, but don't clutter every node.
 - ICONS: for software-architecture, cloud, infrastructure or tech-stack diagrams, set "icon" on a node to represent it as a labelled product/technology glyph instead of a plain box. Use the node's "label" as its caption (e.g. "Postgres", "Orders API", "Load Balancer"). When "icon" is set, omit "shape". Only use an icon key from this catalog; if nothing fits, use a plain shape instead:
 ${ICON_PROMPT_CATALOG}
+- MODE (optional): set "mode" to how the diagram should be visualized — "canvas" (free-form, default), "mindmap" (auto tree from a root; good for idea/topic breakdowns), "infographic" (bold icon cards + accent blocks; good for overviews and architecture highlights), or "sketch" (hand-drawn look). Omit it to default to canvas.
 - Produce a connected graph. Return ONLY the JSON object.`;
 
 /** Pull the JSON object out of a model reply (tolerates code fences / stray text). */
@@ -191,6 +195,11 @@ function buildSpec(engine: CanvasEngine, spec: DiagramSpec): BuildResult {
       if (Object.keys(patch).length) commands.updateEdge(edge.id, patch);
     }
   });
+
+  // Apply the requested visualization mode (re-skins / arranges what was built).
+  if (spec.mode && MODE_LIST.includes(spec.mode as (typeof MODE_LIST)[number])) {
+    engine.setMode(spec.mode);
+  }
 
   engine.setSelection([...real.values()]);
   if (wasEmpty) engine.zoomToFit();

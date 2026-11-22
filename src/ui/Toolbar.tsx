@@ -4,6 +4,7 @@ import { commands, doc } from "@/app/session";
 import { renameCurrentDiagram } from "@/workspace/backend";
 import { LiveButton } from "./LiveButton";
 import { InsertMenu } from "./InsertMenu";
+import { ModeMenu } from "./ModeMenu";
 import { ThemeMenu } from "./ThemeMenu";
 import { ExportMenu } from "./ExportMenu";
 import type { Tool } from "@/canvas/CanvasEngine";
@@ -92,6 +93,8 @@ export function Toolbar() {
           </button>
         ))}
       </div>
+
+      <ModeMenu />
 
       <button className="tb" onClick={() => commands.undo()}>
         Undo

@@ -74,6 +74,13 @@ export class AnvayaDoc {
   setTags(t: string[]) {
     this.meta.set("tags", t);
   }
+  /** Visualization mode (see document/modes.ts). Defaults to "canvas". */
+  mode(): string {
+    return (this.meta.get("mode") as string) ?? "canvas";
+  }
+  setMode(m: string) {
+    this.meta.set("mode", m);
+  }
 
   // ── Node accessors ────────────────────────────────────────────────────────
   getNode(id: string): SceneNode | undefined {
@@ -189,6 +196,7 @@ export class AnvayaDoc {
       title: this.title(),
       folder: this.folder(),
       tags: this.tags(),
+      mode: this.mode(),
       nodes: this.allNodes(),
       edges: this.allEdges(),
       layouts: this.allLayouts(),
@@ -204,6 +212,7 @@ export class AnvayaDoc {
       this.meta.set("title", json.title);
       this.meta.set("folder", json.folder ?? "");
       this.meta.set("tags", json.tags ?? []);
+      this.meta.set("mode", json.mode ?? "canvas");
       json.nodes.forEach((n) => this.putNode(n));
       json.edges.forEach((e) => this.putEdge(e));
       json.layouts.forEach((l) => this.putLayout(l));
