@@ -128,7 +128,12 @@ export class CanvasEngine {
   private textRes(): number {
     // When exporting, bake text at the export scale so labels are razor-sharp.
     if (this.exportRes) return Math.min(16, Math.max(6, this.exportRes * 2));
-    return Math.min(8, Math.max(2, this.camera.zoom * (window.devicePixelRatio || 1)));
+    // Bake with headroom past the current zoom: the scene only re-rasterizes text
+    // when zoom changes by >1.5x (see applyCamera), so a label baked at exactly the
+    // current zoom gets upscaled — and goes soft — as the user zooms in before the
+    // next re-bake. Baking ~1.6x denser keeps it at >=1:1 density across that window.
+    const HEADROOM = 1.6;
+    return Math.min(8, Math.max(2, this.camera.zoom * (window.devicePixelRatio || 1) * HEADROOM));
   }
 
   constructor(
