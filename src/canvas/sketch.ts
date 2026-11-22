@@ -93,7 +93,7 @@ export function sketchOutline(
           { x, y: y + h },
         ];
 
-  const per = 3; // samples per side
+  const per = 2; // samples per side (fewer = straighter, calmer sides)
   const pts: Pt[] = [];
   for (let c = 0; c < corners.length; c++) {
     const a = corners[c];
@@ -107,15 +107,47 @@ export function sketchOutline(
 }
 
 /**
- * Jitter an interior of a connector polyline for a hand-drawn line. Endpoints
- * are left exactly in place so arrowheads still attach to the box border.
+ * Give a connector polyline a gentle hand-drawn waver. Rather than nudging every
+ * sample point independently (which reads as a jagged, high-frequency zigzag), we
+ * offset each point *perpendicular* to the line by a smooth low-frequency wave
+ * (a couple of sines with a seeded phase). The result is a relaxed, mostly-straight
+ * line with a little character. Endpoints stay exactly in place so arrowheads keep
+ * attaching to the box border, and the wave tapers to zero near both ends.
  */
-export function jitterLine(poly: Pt[], seed: number, amp = 1.4): Pt[] {
-  if (poly.length < 3) return poly.map((p) => ({ ...p }));
+export function jitterLine(poly: Pt[], seed: number, amp = 0.9, wavelength = 48): Pt[] {
+  const n = poly.length;
+  if (n < 3) return poly.map((p) => ({ ...p }));
+
+  // Arc-length along the polyline, so the wave's frequency is in screen pixels and
+  // independent of how densely the curve was sampled.
+  const cum: number[] = [0];
+  for (let i = 1; i < n; i++) {
+    cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y));
+  }
+  const total = cum[n - 1];
+  if (total < 2) return poly.map((p) => ({ ...p }));
+
   const rnd = seededRand(seed);
+  const ph1 = rnd() * Math.PI * 2;
+  const ph2 = rnd() * Math.PI * 2;
+  const k1 = (Math.PI * 2) / wavelength;
+  const k2 = k1 * 2.3; // a second, shorter wave for a touch of irregularity
+  const fade = wavelength * 0.6; // distance over which the wave ramps in from each end
+
   return poly.map((p, i) => {
-    if (i === 0 || i === poly.length - 1) return { ...p };
-    return { x: p.x + (rnd() * 2 - 1) * amp, y: p.y + (rnd() * 2 - 1) * amp };
+    if (i === 0 || i === n - 1) return { ...p };
+    const s = cum[i];
+    const taper = Math.min(1, Math.min(s, total - s) / fade);
+    // Local perpendicular from the neighbouring points.
+    const a = poly[i - 1];
+    const b = poly[i + 1];
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const off = (Math.sin(s * k1 + ph1) * 0.7 + Math.sin(s * k2 + ph2) * 0.3) * amp * taper;
+    return { x: p.x + -dy * off, y: p.y + dx * off };
   });
 }
 

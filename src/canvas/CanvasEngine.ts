@@ -832,7 +832,7 @@ export class CanvasEngine {
       if (rs === "infographic") {
         card = `<rect x="${n.x - 8}" y="${n.y - 8}" width="${n.w + 16}" height="${n.h + 16}" rx="12" fill="#ffffff" fill-opacity="0.05" stroke="${this.nodeAccent(n, s)}" stroke-width="1.5"/>`;
       } else if (rs === "sketch") {
-        const pts = sketchOutline("rounded", n.x - 8, n.y - 8, n.w + 16, n.h + 16, hashStr(n.id), 2.2);
+        const pts = sketchOutline("rounded", n.x - 8, n.y - 8, n.w + 16, n.h + 16, hashStr(n.id), 1.2);
         card = `<polygon points="${ptsAttr(pts)}" fill="none" stroke="${inkColor(theme.canvasBg)}" stroke-width="1.6" stroke-linejoin="round"/>`;
       }
       const capFont = rs === "sketch" ? SKETCH_FONT : "-apple-system, sans-serif";
@@ -850,8 +850,8 @@ export class CanvasEngine {
       if (rs === "sketch") {
         const ink = inkColor(theme.canvasBg);
         const seed = hashStr(n.id);
-        const outer = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed, 2.4);
-        const inner = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed ^ 0x9e3779b9, 1.7);
+        const outer = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed, 1.3);
+        const inner = sketchOutline(n.shape, n.x, n.y, n.w, n.h, seed ^ 0x9e3779b9, 1.0);
         shape =
           `<polygon points="${ptsAttr(outer)}" fill="${s.fill}" fill-opacity="0.92" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/>` +
           `<polygon points="${ptsAttr(inner)}" fill="none" stroke="${ink}" stroke-width="0.8" stroke-opacity="0.45" stroke-linejoin="round"/>`;
@@ -911,7 +911,7 @@ export class CanvasEngine {
       (rs === "sketch" ? inkColor(theme.canvasBg) : hex(e.kind === "flow" ? theme.edgeFlow : theme.edge));
     const width = e.style.width ?? (rs === "sketch" ? 1.8 : 2);
     let poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
-    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id), 1.4);
+    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id));
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
@@ -1524,7 +1524,7 @@ export class CanvasEngine {
       (rs === "sketch" ? inkColor(theme.canvasBg) : e.kind === "flow" ? theme.edgeFlow : theme.edge);
     const width = e.style.width ?? (rs === "sketch" ? 1.8 : 2);
     let poly = this.routedPolyline(pts, e.routing ?? "curved", this.endpointDirs(e, pts, byId));
-    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id), 1.4);
+    if (rs === "sketch") poly = jitterLine(poly, hashStr(e.id));
     const arrowEnd = e.arrowEnd ?? e.kind === "flow";
     const arrowStart = e.arrowStart ?? false;
     const head = e.arrowHead ?? "triangle";
